@@ -34,3 +34,21 @@ constexpr uint32_t kInGameFlag = 0x2000;
 constexpr uint8_t kFormDefault = 0;
 constexpr uint8_t kFormSparda = 1;
 
+constexpr uint8_t kMeleeIds[] = {4, 0, 1, 3};
+constexpr const char* kMeleeNames[] = {"Force Edge", "Alastor", "Ifrit", "Sparda"};
+constexpr uint8_t kRangedIds[] = {1, 2, 3, 4};
+constexpr const char* kRangedNames[] = {"Handgun", "Shotgun", "Grenadegun", "Nightmare-b"};
+
+using MeleeFormFn = void(__fastcall*)(uint32_t form);
+using MeleeFn = void(__fastcall*)(uint32_t weapon, uint32_t playAura);
+using RangedFn = void(__fastcall*)(uint32_t weapon);
+
+uintptr_t g_base = 0;
+FILE* g_log = nullptr;
+int g_tap_ms = 180;
+int g_trigger_threshold = 30;
+
+std::atomic<int> g_pending_mission{-1};
+std::atomic<int> g_pending_mode{3};
+std::atomic<int> g_applies_left{0};
+std::atomic<bool> g_mission_staged{false};
