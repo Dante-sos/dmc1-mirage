@@ -142,3 +142,19 @@ std::wstring find_game() {
     if (!GetOpenFileNameW(&dialog)) {
         return L"";
     }
+    return chosen;
+}
+
+}  // namespace
+
+int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
+    std::wstring exe = find_game();
+    if (exe.empty()) {
+        MessageBoxW(nullptr, L"Could not find dmc1.exe.", L"DMC1 Switch", MB_ICONERROR);
+        return 1;
+    }
+    const unsigned char* dll = nullptr;
+    unsigned dll_size = 0;
+    const unsigned char* background = nullptr;
+    unsigned background_size = 0;
+#ifdef DMC1_EMBEDDED
