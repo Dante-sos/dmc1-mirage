@@ -958,3 +958,23 @@ bool text_line(const uint8_t* pixels, int width, int height, int pitch, int y0, 
                 }
                 right = x;
             }
+        }
+        int span_px = right >= left ? right - left + 1 : 0;
+        float span = span_px > 0 ? static_cast<float>(span_px) / static_cast<float>(width) : 0.0f;
+        float fill = span_px > 0 ? static_cast<float>(bright) / static_cast<float>(span_px) : 0.0f;
+        int hole = 0;
+        int widest_hole = 0;
+        int mid_bright = 0;
+        if (span_px > 0) {
+            int mid0 = left + span_px / 3;
+            int mid1 = left + (span_px * 2) / 3;
+            for (int x = left; x <= right; ++x) {
+                const uint8_t* px = row + x * 4;
+                int hi = pixel_lum(px);
+                int lo = px[0];
+                if (px[1] < lo) {
+                    lo = px[1];
+                }
+                if (px[2] < lo) {
+                    lo = px[2];
+                }
