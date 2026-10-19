@@ -1078,3 +1078,23 @@ void classify_probe(const uint8_t* pixels, int width, int height, int pitch) {
     bool title = backdrop < 58.0f && text_line(pixels, width, height, pitch, row_at(0.90f), row_at(0.975f), 145, 0.35f, 1.0f);
     if (title) {
         g_title_miss = 0;
+        if (g_screen == Screen::Title) {
+            g_title_hits = 10;
+            return;
+        }
+        if (++g_title_hits >= 10) {
+            show_title();
+        }
+        return;
+    }
+    g_title_hits = 0;
+    if (g_screen == Screen::Title && ++g_title_miss > 8) {
+        hide_menu();
+    }
+}
+
+bool edge_key(int index, int vk) {
+    bool down = (GetAsyncKeyState(vk) & 0x8000) != 0;
+    bool pressed = down && !g_key_down[index];
+    g_key_down[index] = down;
+    return pressed;
