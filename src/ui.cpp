@@ -458,3 +458,23 @@ struct DxState {
     UINT scissor_count;
     D3D11_RECT scissors[D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE];
     ID3D11RenderTargetView* rtvs[8];
+    ID3D11DepthStencilView* dsv;
+};
+
+void save_state(ID3D11DeviceContext* context, DxState& state) {
+    std::memset(&state, 0, sizeof(state));
+    context->IAGetPrimitiveTopology(&state.topology);
+    context->IAGetInputLayout(&state.layout);
+    context->IAGetVertexBuffers(0, 1, &state.vb, &state.stride, &state.offset);
+    context->IAGetIndexBuffer(&state.ib, &state.ib_format, &state.ib_offset);
+    context->VSGetShader(&state.vs, nullptr, nullptr);
+    context->VSGetConstantBuffers(0, 1, &state.vs_cb);
+    context->VSGetShaderResources(0, kSrvSlots, state.vs_srvs);
+    context->PSGetShader(&state.ps, nullptr, nullptr);
+    context->PSGetConstantBuffers(0, 1, &state.ps_cb);
+    context->PSGetShaderResources(0, kSrvSlots, state.ps_srvs);
+    context->PSGetSamplers(0, kSrvSlots, state.ps_samplers);
+    context->GSGetShader(&state.gs, nullptr, nullptr);
+    context->GSGetShaderResources(0, kSrvSlots, state.gs_srvs);
+    context->OMGetBlendState(&state.blend, state.blend_factor, &state.sample_mask);
+    context->OMGetDepthStencilState(&state.depth, &state.stencil_ref);
