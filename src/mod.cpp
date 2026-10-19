@@ -250,3 +250,21 @@ void place_mission_spawn(int mission) {
     const uint8_t* entry = reinterpret_cast<uint8_t*>(g_base + kMissionTableRva) + static_cast<uintptr_t>(mission) * 0x20;
     uint32_t stage = 0;
     uint32_t room = 0;
+    float pos[4] = {};
+    std::memcpy(&stage, entry, sizeof(stage));
+    std::memcpy(&room, entry + 4, sizeof(room));
+    std::memcpy(pos, entry + 0x10, sizeof(pos));
+    uint8_t* event = event_data();
+    if (event) {
+        write_u32(event + 0x270, stage);
+        write_u32(event + 0x274, room);
+        write_u32(event + 0x288, stage);
+        write_u32(event + 0x28C, room);
+    }
+    std::memcpy(reinterpret_cast<void*>(g_base + kSpawnPosRva), pos, sizeof(pos));
+    uint8_t* body = actor();
+    if (body) {
+        const float x = pos[0];
+        const float y = pos[1];
+        const float z = pos[2];
+        const float facing = pos[3];
