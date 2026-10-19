@@ -520,3 +520,21 @@ bool mod_in_game() {
 void mod_start() {
     g_base = reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
     wchar_t path[MAX_PATH]{};
+    GetModuleFileNameW(nullptr, path, MAX_PATH);
+    wchar_t* slash = wcsrchr(path, L'\\');
+    if (slash) {
+        wcscpy(slash + 1, L"dmc1-switch.log");
+    }
+    g_log = _wfopen(path, L"a");
+    read_ini();
+    log_line("DMC1 switch loaded base=%p tap_ms=%d", reinterpret_cast<void*>(g_base), g_tap_ms);
+    install_hooks();
+    overlay_install();
+}
+
+void mod_on_get_state(DWORD user, XInputState* state) {
+    if (user != 0) {
+        return;
+    }
+    overlay_on_pad(state);
+    if (!state || !g_hooks_ready) {
