@@ -78,3 +78,23 @@ int g_mode = 1;
 int g_glyph_w[95] = {};
 
 enum class Screen { None, Title, Missions };
+Screen g_screen = Screen::None;
+int g_title_index = 0;
+int g_game_index = 0;
+int g_menu_lock = 0;
+int g_title_miss = 0;
+int g_title_hits = 0;
+float g_menu_anchor = 0.662f;
+std::atomic<bool> g_capture{false};
+std::atomic<bool> g_inject_on{false};
+std::atomic<WORD> g_inject_buttons{0};
+WORD g_inject_words[12] = {};
+int g_inject_count = 0;
+int g_inject_pos = 0;
+int g_inject_frames = 0;
+int g_probe_cooldown = 0;
+bool g_logged_menu = false;
+WORD g_prev_buttons = 0;
+bool g_key_down[7] = {};
+
+using CreateFn = HRESULT(WINAPI*)(IDXGIAdapter*, D3D_DRIVER_TYPE, HMODULE, UINT, const D3D_FEATURE_LEVEL*, UINT, UINT, const DXGI_SWAP_CHAIN_DESC*, IDXGISwapChain**, ID3D11Device**, D3D_FEATURE_LEVEL*, ID3D11DeviceContext**);
