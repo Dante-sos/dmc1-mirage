@@ -1118,3 +1118,23 @@ void update_menu_input() {
         g_screen = Screen::Missions;
         g_capture.store(true);
         return;
+    }
+    if (g_screen == Screen::None) {
+        g_capture.store(false);
+        return;
+    }
+    g_capture.store(true);
+    if (g_menu_lock > 0) {
+        g_menu_lock--;
+        return;
+    }
+    if (g_screen == Screen::Title) {
+        if (up && g_title_index > 0) {
+            g_title_index--;
+        }
+        if (down && g_title_index < 3) {
+            g_title_index++;
+        }
+        if (close) {
+            WORD steps[2] = {0x2000, 0};
+            g_capture.store(true);
