@@ -12,3 +12,16 @@ int main() {
     std::printf("get=%p set=%p\n", get_state, set_state);
     if (!get_state || !set_state) {
         return 1;
+    }
+    struct State {
+        DWORD packet;
+        WORD buttons;
+        BYTE lt;
+        BYTE rt;
+        SHORT lx, ly, rx, ry;
+    } state{};
+    using GetFn = DWORD(WINAPI*)(DWORD, State*);
+    DWORD result = reinterpret_cast<GetFn>(get_state)(0, &state);
+    std::printf("XInputGetState -> %lu packet=%lu\n", result, state.packet);
+    return 0;
+}
