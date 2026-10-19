@@ -878,3 +878,23 @@ void show_title() {
     g_title_miss = 0;
     g_title_hits = 0;
     g_prev_buttons = g_buttons.load();
+    if (!g_logged_menu) {
+        g_logged_menu = true;
+        log_line("title menu shown");
+    }
+}
+
+void hide_menu() {
+    g_screen = Screen::None;
+    g_capture.store(false);
+}
+
+int pixel_lum(const uint8_t* px) {
+    int lum = px[0];
+    if (px[1] > lum) {
+        lum = px[1];
+    }
+    if (px[2] > lum) {
+        lum = px[2];
+    }
+    return lum;
