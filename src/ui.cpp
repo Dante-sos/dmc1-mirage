@@ -1218,3 +1218,23 @@ void queue_probe(ID3D11Texture2D* back, const D3D11_TEXTURE2D_DESC& desc) {
 
 void consume_probe() {
     if (!g_probe_pending || !g_probe) {
+        return;
+    }
+    D3D11_MAPPED_SUBRESOURCE mapped{};
+    if (FAILED(g_context->Map(g_probe, 0, D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &mapped))) {
+        return;
+    }
+    classify_probe(static_cast<const uint8_t*>(mapped.pData), g_probe_w, g_probe_h, static_cast<int>(mapped.RowPitch));
+    g_context->Unmap(g_probe, 0);
+    g_probe_pending = false;
+}
+
+using ResizeFn = HRESULT(STDMETHODCALLTYPE*)(IDXGISwapChain*, UINT, UINT, UINT, DXGI_FORMAT, UINT);
+ResizeFn g_resize = nullptr;
+
+void paint(IDXGISwapChain* swap) {
+    ID3D11Device* device = nullptr;
+    if (FAILED(swap->GetDevice(__uuidof(ID3D11Device), reinterpret_cast<void**>(&device))) || !device) {
+        return;
+    }
+    if (device != g_device && !init_renderer(device)) {
