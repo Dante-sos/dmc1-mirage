@@ -378,3 +378,23 @@ float4 ps_main(Vout i) : SV_TARGET {
         return false;
     }
     device->CreateVertexShader(vs_blob->GetBufferPointer(), vs_blob->GetBufferSize(), nullptr, &g_vs);
+    device->CreatePixelShader(ps_blob->GetBufferPointer(), ps_blob->GetBufferSize(), nullptr, &g_ps);
+    D3D11_INPUT_ELEMENT_DESC layout[] = {
+        {"POSITION", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 8, D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    };
+    device->CreateInputLayout(layout, 3, vs_blob->GetBufferPointer(), vs_blob->GetBufferSize(), &g_layout);
+    vs_blob->Release();
+    ps_blob->Release();
+    D3D11_BUFFER_DESC cb{};
+    cb.ByteWidth = 16;
+    cb.Usage = D3D11_USAGE_DYNAMIC;
+    cb.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    cb.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    device->CreateBuffer(&cb, nullptr, &g_cb);
+    D3D11_SAMPLER_DESC samp{};
+    samp.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+    samp.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
+    samp.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
+    samp.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
