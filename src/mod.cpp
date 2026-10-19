@@ -124,3 +124,21 @@ void read_ini() {
     }
 }
 
+uint8_t* alloc_near(uintptr_t target, size_t size) {
+    SYSTEM_INFO info{};
+    GetSystemInfo(&info);
+    const uintptr_t grain = info.dwAllocationGranularity;
+    uintptr_t min = target > 0x40000000ull ? (target - 0x40000000ull) : grain;
+    uintptr_t max = target + 0x40000000ull;
+    min &= ~(grain - 1);
+    for (uintptr_t addr = min; addr < max; addr += grain) {
+        void* block = VirtualAlloc(reinterpret_cast<void*>(addr), size, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+        if (block) {
+            return static_cast<uint8_t*>(block);
+        }
+    }
+    return nullptr;
+}
+
+void emit(uint8_t*& cursor, std::initializer_list<uint8_t> bytes) {
+    for (uint8_t byte : bytes) {
