@@ -358,3 +358,23 @@ struct Vin { float2 pos : POSITION; float2 uv : TEXCOORD; float4 col : COLOR; };
 struct Vout { float4 pos : SV_POSITION; float2 uv : TEXCOORD; float4 col : COLOR; };
 Vout vs_main(Vin i) {
     Vout o;
+    o.pos = float4(i.pos.x / screen.x * 2.0 - 1.0, 1.0 - i.pos.y / screen.y * 2.0, 0.0, 1.0);
+    o.uv = i.uv;
+    o.col = i.col;
+    return o;
+}
+Texture2D font : register(t0);
+SamplerState samp : register(s0);
+float4 ps_main(Vout i) : SV_TARGET {
+    float4 t = font.Sample(samp, i.uv);
+    float3 rgb = lerp(i.col.rgb, t.rgb * i.col.rgb, texMode);
+    return float4(rgb, i.col.a * t.a);
+}
+)";
+    ID3DBlob* vs_blob = nullptr;
+    ID3DBlob* ps_blob = nullptr;
+    if (!compile_shader(source, "vs_main", "vs_4_0", &vs_blob) || !compile_shader(source, "ps_main", "ps_4_0", &ps_blob)) {
+        release_renderer();
+        return false;
+    }
+    device->CreateVertexShader(vs_blob->GetBufferPointer(), vs_blob->GetBufferSize(), nullptr, &g_vs);
