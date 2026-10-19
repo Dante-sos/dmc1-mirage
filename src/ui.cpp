@@ -298,3 +298,23 @@ void load_background(ID3D11Device* device) {
     }
     Gdiplus::Bitmap bitmap(path);
     if (bitmap.GetLastStatus() != Gdiplus::Ok || bitmap.GetWidth() == 0) {
+        log_line("mission background missing");
+        return;
+    }
+    Gdiplus::Rect rect(0, 0, static_cast<INT>(bitmap.GetWidth()), static_cast<INT>(bitmap.GetHeight()));
+    Gdiplus::BitmapData data{};
+    if (bitmap.LockBits(&rect, Gdiplus::ImageLockModeRead, PixelFormat32bppARGB, &data) != Gdiplus::Ok) {
+        return;
+    }
+    std::vector<uint8_t> pixels(static_cast<size_t>(data.Width) * data.Height * 4);
+    for (UINT y = 0; y < data.Height; ++y) {
+        auto* src = static_cast<uint8_t*>(data.Scan0) + y * data.Stride;
+        uint8_t* dst = pixels.data() + static_cast<size_t>(y) * data.Width * 4;
+        for (UINT x = 0; x < data.Width; ++x) {
+            dst[x * 4 + 0] = src[x * 4 + 2];
+            dst[x * 4 + 1] = src[x * 4 + 1];
+            dst[x * 4 + 2] = src[x * 4 + 0];
+            dst[x * 4 + 3] = 255;
+        }
+    }
+    g_bg_w = static_cast<int>(data.Width);
