@@ -758,3 +758,23 @@ void draw_mission_screen(float width, float height) {
     float panel_y = height * 0.045f;
     float panel_h = height * 0.91f;
     draw_rect(verts, panel_x, panel_y, panel_w, panel_h, 0.02f, 0.0f, 0.0f, 0.72f);
+    draw_text(verts, panel_x + 24, panel_y + 14, "MISSION SELECT", scale * 0.62f, 0.8f * scale, 0.93f, 0.78f, 0.42f, 1.0f);
+
+    float list_top = panel_y + 58;
+    float list_bottom = panel_y + panel_h - 88;
+    float row_h = (list_bottom - list_top) / static_cast<float>(kMissionCount);
+    float row_scale = (row_h - 4.0f) / static_cast<float>(kCell);
+    if (row_scale > scale * 0.48f) {
+        row_scale = scale * 0.48f;
+    }
+    if (row_scale < 0.32f) {
+        row_scale = 0.32f;
+    }
+    float row_y = list_top;
+    for (int i = 0; i < kMissionCount; ++i) {
+        if (i == g_mission) {
+            draw_rect(verts, panel_x + 12, row_y - 1, panel_w - 24, row_h - 2, 0.55f, 0.05f, 0.04f, 0.92f);
+            draw_text(verts, panel_x + 22, row_y, kMissions[i], row_scale, 0.15f, 1.0f, 0.97f, 0.92f, 1.0f);
+        } else {
+            draw_text(verts, panel_x + 22, row_y, kMissions[i], row_scale, 0.15f, 0.72f, 0.68f, 0.64f, 1.0f);
+        }
