@@ -178,3 +178,21 @@ uint8_t* write_stub(uint8_t* cursor, void (*fn)(), const uint8_t* stolen, size_t
     cursor += stolen_len;
     emit(cursor, {0xFF, 0x25, 0x00, 0x00, 0x00, 0x00});
     emit_u64(cursor, reinterpret_cast<uint64_t>(ret));
+    return cursor;
+}
+
+bool patch_jump(uint8_t* site, size_t len, uint8_t* dest) {
+    intptr_t rel = dest - (site + 5);
+    if (rel > INT32_MAX || rel < INT32_MIN) {
+        log_line("jump from %p to %p does not fit", site, dest);
+        return false;
+    }
+    DWORD old = 0;
+    if (!VirtualProtect(site, len, PAGE_EXECUTE_READWRITE, &old)) {
+        log_line("VirtualProtect failed at %p", site);
+        return false;
+    }
+    site[0] = 0xE9;
+    int32_t rel32 = static_cast<int32_t>(rel);
+    std::memcpy(site + 1, &rel32, sizeof(rel32));
+    for (size_t i = 5; i < len; ++i) {
