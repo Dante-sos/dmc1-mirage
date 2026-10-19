@@ -358,3 +358,21 @@ void switch_ranged() {
         return;
     }
     uint8_t current = body[kRangedOffset];
+    size_t index = 0;
+    bool found = false;
+    for (size_t i = 0; i < std::size(kRangedIds); ++i) {
+        if (kRangedIds[i] == current) {
+            index = i;
+            found = true;
+            break;
+        }
+    }
+    if (found) {
+        index = (index + 1) % std::size(kRangedIds);
+    }
+    uint8_t next = kRangedIds[index];
+    body[kRangedOffset] = next;
+    log_line("gun %u -> %s", current, name_for(kRangedIds, kRangedNames, std::size(kRangedIds), next));
+    auto weapon_fn = reinterpret_cast<RangedFn>(g_base + kUpdateRangedRva);
+    weapon_fn(next);
+}
