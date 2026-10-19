@@ -778,3 +778,23 @@ void draw_mission_screen(float width, float height) {
         } else {
             draw_text(verts, panel_x + 22, row_y, kMissions[i], row_scale, 0.15f, 0.72f, 0.68f, 0.64f, 1.0f);
         }
+        row_y += row_h;
+    }
+    char difficulty[64];
+    std::snprintf(difficulty, sizeof(difficulty), "<   %s   >", kModeNames[g_mode]);
+    draw_text(verts, panel_x + 22, panel_y + panel_h - 72, "DIFFICULTY", scale * 0.4f, 0.6f * scale, 0.75f, 0.62f, 0.36f, 1.0f);
+    draw_text(verts, panel_x + 22, panel_y + panel_h - 42, difficulty, scale * 0.52f, 0.4f, 0.96f, 0.94f, 0.88f, 1.0f);
+    submit(verts, width, height, 0.0f, g_font_view);
+}
+
+void draw_screen(float width, float height) {
+    if (g_screen == Screen::Title) {
+        draw_title_menu(width, height);
+    } else if (g_screen == Screen::Missions) {
+        draw_mission_screen(width, height);
+    }
+}
+
+void move_mission(int delta) {
+    g_mission += delta;
+    if (g_mission < 0) {
