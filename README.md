@@ -22,3 +22,11 @@ During a fight, tap the left trigger to cycle melee weapons and the right trigge
 [switch]
 tap_ms=180
 trigger_threshold=30
+```
+
+Reset on the pause menu returns to the title screen.
+
+## Build
+
+The proxy is built with g++ from the `dmc1-switch` directory:
+
