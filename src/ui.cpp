@@ -658,3 +658,23 @@ void submit(std::vector<Vertex>& verts, float width, float height, float tex_mod
     g_context->OMSetBlendState(g_blend, blend_factor, 0xFFFFFFFF);
     g_context->OMSetDepthStencilState(g_depth, 0);
     g_context->RSSetState(g_raster);
+    D3D11_VIEWPORT viewport{};
+    viewport.Width = width;
+    viewport.Height = height;
+    viewport.MaxDepth = 1;
+    g_context->RSSetViewports(1, &viewport);
+    g_context->Draw(static_cast<UINT>(verts.size()), 0);
+    verts.clear();
+}
+
+void draw_background(std::vector<Vertex>& verts, float width, float height) {
+    float u0 = 0, v0 = 0, u1 = 1, v1 = 1;
+    if (g_bg_w > 0 && g_bg_h > 0 && height > 0) {
+        float screen_aspect = width / height;
+        float image_aspect = static_cast<float>(g_bg_w) / static_cast<float>(g_bg_h);
+        if (image_aspect > screen_aspect) {
+            float visible = screen_aspect / image_aspect;
+            float pad = (1.0f - visible) * 0.5f;
+            u0 = pad;
+            u1 = 1.0f - pad;
+        } else {
