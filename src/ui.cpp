@@ -738,3 +738,23 @@ void draw_title_menu(float width, float height) {
 
 void draw_mission_screen(float width, float height) {
     std::vector<Vertex> verts;
+    verts.reserve(6000);
+    if (g_bg_view) {
+        draw_background(verts, width, height);
+        submit(verts, width, height, 1.0f, g_bg_view);
+    } else {
+        draw_rect(verts, 0, 0, width, height, 0.08f, 0.0f, 0.0f, 1.0f);
+        submit(verts, width, height, 0.0f, g_font_view);
+    }
+    float scale = height / 900.0f;
+    if (scale < 0.7f) {
+        scale = 0.7f;
+    }
+    if (scale > 1.45f) {
+        scale = 1.45f;
+    }
+    float panel_w = width * 0.38f;
+    float panel_x = width - panel_w - width * 0.035f;
+    float panel_y = height * 0.045f;
+    float panel_h = height * 0.91f;
+    draw_rect(verts, panel_x, panel_y, panel_w, panel_h, 0.02f, 0.0f, 0.0f, 0.72f);
