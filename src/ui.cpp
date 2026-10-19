@@ -578,3 +578,23 @@ float text_width(const char* text, float scale, float tracking) {
 void draw_text(std::vector<Vertex>& verts, float x, float y, const char* text, float scale, float tracking, float r, float g, float b, float a) {
     float cursor = x;
     float size = static_cast<float>(kCell) * scale;
+    for (const char* ch = text; *ch; ++ch) {
+        unsigned char value = static_cast<unsigned char>(*ch);
+        int advance = kCell / 2;
+        if (value >= 32 && value <= 126) {
+            int cell = value - 31;
+            int col = cell % kCols;
+            int row = cell / kCols;
+            float u0 = static_cast<float>(col * kCell) / kAtlas;
+            float v0 = static_cast<float>(row * kCell) / kAtlas;
+            float u1 = static_cast<float>((col + 1) * kCell) / kAtlas;
+            float v1 = static_cast<float>((row + 1) * kCell) / kAtlas;
+            push_quad(verts, cursor, y, size, size, u0, v0, u1, v1, r, g, b, a);
+            advance = g_glyph_w[value - 32];
+            if (advance <= 0) {
+                advance = kCell / 2;
+            }
+        }
+        cursor += static_cast<float>(advance) * scale + tracking;
+    }
+}
