@@ -1378,3 +1378,23 @@ bool hook_import(const char* dll_name, const char* function_name, void* detour, 
     }
     return false;
 }
+
+HHOOK g_key_hook = nullptr;
+
+LRESULT CALLBACK keyboard_hook(int code, WPARAM wp, LPARAM lp) {
+    if (code == HC_ACTION && g_capture.load() && !g_inject_on.load()) {
+        auto* info = reinterpret_cast<KBDLLHOOKSTRUCT*>(lp);
+        switch (info->vkCode) {
+        case VK_UP:
+        case VK_DOWN:
+        case VK_LEFT:
+        case VK_RIGHT:
+        case VK_RETURN:
+        case VK_ESCAPE:
+            return 1;
+        }
+    }
+    return CallNextHookEx(g_key_hook, code, wp, lp);
+}
+
+DWORD WINAPI keyboard_thread(void*) {
