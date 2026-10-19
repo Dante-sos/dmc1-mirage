@@ -1198,3 +1198,23 @@ void queue_probe(ID3D11Texture2D* back, const D3D11_TEXTURE2D_DESC& desc) {
         D3D11_TEXTURE2D_DESC stage = desc;
         stage.Width = width;
         stage.Height = height;
+        stage.MipLevels = 1;
+        stage.ArraySize = 1;
+        stage.SampleDesc.Count = 1;
+        stage.SampleDesc.Quality = 0;
+        stage.Usage = D3D11_USAGE_STAGING;
+        stage.BindFlags = 0;
+        stage.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+        stage.MiscFlags = 0;
+        if (FAILED(g_device->CreateTexture2D(&stage, nullptr, &g_probe))) {
+            return;
+        }
+        g_probe_w = static_cast<int>(width);
+        g_probe_h = static_cast<int>(height);
+    }
+    g_context->CopySubresourceRegion(g_probe, 0, 0, 0, 0, back, 0, &box);
+    g_probe_pending = true;
+}
+
+void consume_probe() {
+    if (!g_probe_pending || !g_probe) {
