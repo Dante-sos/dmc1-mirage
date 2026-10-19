@@ -1418,3 +1418,23 @@ void start_keyboard_hook() {
         return;
     }
     started = true;
+    CreateThread(nullptr, 0, keyboard_thread, nullptr, 0, nullptr);
+}
+
+}  // namespace
+
+void overlay_on_pad(XInputState* state) {
+    if (!state) {
+        return;
+    }
+    WORD buttons = state->gamepad.buttons;
+    g_buttons.store(buttons);
+    if (g_inject_on.load()) {
+        state->gamepad.buttons = g_inject_buttons.load();
+        return;
+    }
+    if (g_capture.load()) {
+        state->gamepad.buttons = static_cast<WORD>(buttons & ~kMenuButtons);
+    }
+}
+
