@@ -466,3 +466,21 @@ void install_hooks() {
         !expect_bytes(reinterpret_cast<void*>(g_base + kUpdateMeleeRva), melee_bytes, sizeof(melee_bytes), "melee update") ||
         !expect_bytes(reinterpret_cast<void*>(g_base + kUpdateRangedRva), ranged_bytes, sizeof(ranged_bytes), "gun update")) {
         return;
+    }
+    uint8_t* page = alloc_near(g_base + kMainLoopRva, 0x1000);
+    if (!page) {
+        log_line("could not allocate hook memory near dmc1.exe");
+        return;
+    }
+    uint8_t* cursor = page;
+    uint8_t* main_stub = cursor;
+    cursor = write_stub(cursor, apply_weapon_requests, main_bytes, sizeof(main_bytes), main_site + sizeof(main_bytes));
+    uint8_t* load_stub = cursor;
+    cursor = write_stub(cursor, apply_pending_at_load, load_bytes, sizeof(load_bytes), load_site + sizeof(load_bytes));
+    uint8_t* start_stub = cursor;
+    cursor = write_stub(cursor, apply_pending_at_start, start_bytes, sizeof(start_bytes), start_site + sizeof(start_bytes));
+    if (!patch_jump(main_site, sizeof(main_bytes), main_stub) || !patch_jump(load_site, sizeof(load_bytes), load_stub) ||
+        !patch_jump(start_site, sizeof(start_bytes), start_stub)) {
+        log_line("hook patch failed");
+        return;
+    }
