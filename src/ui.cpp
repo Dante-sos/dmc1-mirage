@@ -398,3 +398,23 @@ float4 ps_main(Vout i) : SV_TARGET {
     samp.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
     samp.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
     samp.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+    device->CreateSamplerState(&samp, &g_sampler);
+    D3D11_BLEND_DESC blend{};
+    blend.RenderTarget[0].BlendEnable = TRUE;
+    blend.RenderTarget[0].SrcBlend = D3D11_BLEND_SRC_ALPHA;
+    blend.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
+    blend.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
+    blend.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
+    blend.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
+    blend.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+    blend.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+    device->CreateBlendState(&blend, &g_blend);
+    D3D11_DEPTH_STENCIL_DESC depth{};
+    device->CreateDepthStencilState(&depth, &g_depth);
+    D3D11_RASTERIZER_DESC raster{};
+    raster.FillMode = D3D11_FILL_SOLID;
+    raster.CullMode = D3D11_CULL_NONE;
+    raster.DepthClipEnable = TRUE;
+    device->CreateRasterizerState(&raster, &g_raster);
+    if (!build_font(device) || !g_vs || !g_ps || !g_layout || !g_cb) {
+        log_line("overlay renderer init failed");
