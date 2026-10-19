@@ -1338,3 +1338,23 @@ void hook_swap_chain(IDXGISwapChain* swap) {
 
 HRESULT WINAPI create_hook(IDXGIAdapter* adapter, D3D_DRIVER_TYPE driver, HMODULE software, UINT flags, const D3D_FEATURE_LEVEL* levels, UINT level_count, UINT sdk, const DXGI_SWAP_CHAIN_DESC* desc, IDXGISwapChain** swap, ID3D11Device** device, D3D_FEATURE_LEVEL* level, ID3D11DeviceContext** context) {
     HRESULT result = g_create(adapter, driver, software, flags, levels, level_count, sdk, desc, swap, device, level, context);
+    if (SUCCEEDED(result) && swap && *swap) {
+        hook_swap_chain(*swap);
+    }
+    return result;
+}
+
+bool hook_import(const char* dll_name, const char* function_name, void* detour, void** original) {
+    auto* base = reinterpret_cast<uint8_t*>(GetModuleHandleW(nullptr));
+    auto* dos = reinterpret_cast<IMAGE_DOS_HEADER*>(base);
+    auto* nt = reinterpret_cast<IMAGE_NT_HEADERS*>(base + dos->e_lfanew);
+    auto& dir = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
+    if (!dir.VirtualAddress) {
+        return false;
+    }
+    auto* import_desc = reinterpret_cast<IMAGE_IMPORT_DESCRIPTOR*>(base + dir.VirtualAddress);
+    for (; import_desc->Name; ++import_desc) {
+        const char* name = reinterpret_cast<const char*>(base + import_desc->Name);
+        if (_stricmp(name, dll_name) != 0) {
+            continue;
+        }
