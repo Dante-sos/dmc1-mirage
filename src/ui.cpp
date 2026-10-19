@@ -178,3 +178,23 @@ bool compile_shader(const char* source, const char* entry, const char* target, I
         return false;
     }
     if (errors) {
+        errors->Release();
+    }
+    return true;
+}
+
+bool build_font(ID3D11Device* device) {
+    BITMAPINFO info{};
+    info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    info.bmiHeader.biWidth = kAtlas;
+    info.bmiHeader.biHeight = -kAtlas;
+    info.bmiHeader.biPlanes = 1;
+    info.bmiHeader.biBitCount = 32;
+    info.bmiHeader.biCompression = BI_RGB;
+    void* bits = nullptr;
+    HDC dc = CreateCompatibleDC(nullptr);
+    HBITMAP bitmap = CreateDIBSection(dc, &info, DIB_RGB_COLORS, &bits, nullptr, 0);
+    if (!bitmap || !bits) {
+        DeleteDC(dc);
+        return false;
+    }
