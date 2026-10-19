@@ -478,3 +478,23 @@ void save_state(ID3D11DeviceContext* context, DxState& state) {
     context->GSGetShaderResources(0, kSrvSlots, state.gs_srvs);
     context->OMGetBlendState(&state.blend, state.blend_factor, &state.sample_mask);
     context->OMGetDepthStencilState(&state.depth, &state.stencil_ref);
+    context->RSGetState(&state.raster);
+    state.viewport_count = D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE;
+    context->RSGetViewports(&state.viewport_count, state.viewports);
+    state.scissor_count = D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE;
+    context->RSGetScissorRects(&state.scissor_count, state.scissors);
+    context->OMGetRenderTargets(8, state.rtvs, &state.dsv);
+}
+
+void restore_state(ID3D11DeviceContext* context, DxState& state) {
+    ID3D11ShaderResourceView* unbound[kSrvSlots] = {};
+    context->PSSetShaderResources(0, kSrvSlots, unbound);
+    context->VSSetShaderResources(0, kSrvSlots, unbound);
+    context->GSSetShaderResources(0, kSrvSlots, unbound);
+    context->OMSetRenderTargets(8, state.rtvs, state.dsv);
+    context->IASetPrimitiveTopology(state.topology);
+    context->IASetInputLayout(state.layout);
+    context->IASetVertexBuffers(0, 1, &state.vb, &state.stride, &state.offset);
+    context->IASetIndexBuffer(state.ib, state.ib_format, state.ib_offset);
+    context->VSSetShader(state.vs, nullptr, 0);
+    context->VSSetConstantBuffers(0, 1, &state.vs_cb);
