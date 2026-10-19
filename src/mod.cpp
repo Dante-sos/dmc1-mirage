@@ -16,3 +16,21 @@ constexpr uintptr_t kSpawnPosRva = 0x27E82A0;
 constexpr uintptr_t kMissionTableRva = 0x560170;
 constexpr uintptr_t kMainLoopRva = 0x251839;
 constexpr uintptr_t kLoadSaveRva = 0x255BAE;
+constexpr uintptr_t kStartMissionRva = 0x3F9CEF;
+constexpr uintptr_t kMenuConfigPtrRva = 0x60B018;
+constexpr int kMissionSlots = 23;
+constexpr uintptr_t kUpdateMeleeFormRva = 0x2C4A00;
+constexpr uintptr_t kUpdateMeleeRva = 0x2C99C0;
+constexpr uintptr_t kUpdateRangedRva = 0x2C4C50;
+
+constexpr uintptr_t kEventOffset = 0x1CA4;
+constexpr uintptr_t kMissionOffset = 0x1E64;
+constexpr uintptr_t kModeOffset = 0x1E66;
+constexpr uintptr_t kMeleeOffset = 0x1BCC;
+constexpr uintptr_t kMeleeFormOffset = 0x1C4C;
+constexpr uintptr_t kRangedOffset = 0x1C48;
+constexpr uint32_t kInGameFlag = 0x2000;
+
+constexpr uint8_t kFormDefault = 0;
+constexpr uint8_t kFormSparda = 1;
+
