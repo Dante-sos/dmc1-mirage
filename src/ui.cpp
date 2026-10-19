@@ -818,3 +818,23 @@ void move_mode(int delta) {
 void start_inject(const WORD* words, int count) {
     if (count > 12) {
         count = 12;
+    }
+    g_inject_count = count;
+    g_inject_pos = 0;
+    g_inject_frames = 0;
+    for (int i = 0; i < count; ++i) {
+        g_inject_words[i] = words[i];
+    }
+    g_inject_buttons.store(count > 0 ? words[0] : 0);
+    g_inject_on.store(count > 0);
+    g_screen = Screen::None;
+    g_probe_cooldown = 50;
+}
+
+void tick_inject() {
+    if (!g_inject_on.load()) {
+        return;
+    }
+    g_inject_frames++;
+    if (g_inject_frames < 7) {
+        return;
