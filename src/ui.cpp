@@ -1018,3 +1018,23 @@ bool split_bottom_labels(const uint8_t* pixels, int width, int height, int pitch
     for (int y = y0; y < y1; ++y) {
         const uint8_t* row = pixels + y * pitch;
         int left = -1;
+        int right = -1;
+        int hole = 0;
+        int widest = 0;
+        for (int x = 0; x < width; ++x) {
+            const uint8_t* px = row + x * 4;
+            int hi = pixel_lum(px);
+            int lo = px[0];
+            if (px[1] < lo) {
+                lo = px[1];
+            }
+            if (px[2] < lo) {
+                lo = px[2];
+            }
+            if (hi >= 140 && hi - lo <= 40) {
+                if (left < 0) {
+                    left = x;
+                }
+                right = x;
+                hole = 0;
+            } else if (left >= 0 && ++hole > widest) {
