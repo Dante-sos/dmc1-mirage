@@ -340,3 +340,21 @@ void switch_melee() {
     }
     if (found) {
         index = (index + 1) % std::size(kMeleeIds);
+    }
+    uint8_t next = kMeleeIds[index];
+    uint8_t form = (next == 3 || next == 2) ? kFormSparda : kFormDefault;
+    body[kMeleeOffset] = next;
+    body[kMeleeFormOffset] = form;
+    log_line("melee %u -> %s", current, name_for(kMeleeIds, kMeleeNames, std::size(kMeleeIds), next));
+    auto form_fn = reinterpret_cast<MeleeFormFn>(g_base + kUpdateMeleeFormRva);
+    auto weapon_fn = reinterpret_cast<MeleeFn>(g_base + kUpdateMeleeRva);
+    form_fn(form);
+    weapon_fn(next, 0);
+}
+
+void switch_ranged() {
+    uint8_t* body = actor();
+    if (!body) {
+        return;
+    }
+    uint8_t current = body[kRangedOffset];
