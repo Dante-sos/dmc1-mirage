@@ -46,3 +46,15 @@ extern "C" __declspec(dllexport) DWORD WINAPI XInputGetState(DWORD user, XInputS
 }
 
 extern "C" __declspec(dllexport) DWORD WINAPI XInputSetState(DWORD user, void* vibration) {
+    if (!real_set_state) {
+        return ERROR_DEVICE_NOT_CONNECTED;
+    }
+    return real_set_state(user, vibration);
+}
+
+BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID) {
+    if (reason != DLL_PROCESS_ATTACH) {
+        return TRUE;
+    }
+    DisableThreadLibraryCalls(instance);
+    load_real();
