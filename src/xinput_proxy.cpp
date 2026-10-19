@@ -34,3 +34,15 @@ bool process_is_dmc1() {
 
 }  // namespace
 
+extern "C" __declspec(dllexport) DWORD WINAPI XInputGetState(DWORD user, XInputState* state) {
+    if (!real_get_state) {
+        return ERROR_DEVICE_NOT_CONNECTED;
+    }
+    DWORD result = real_get_state(user, state);
+    if (g_dmc1) {
+        mod_on_get_state(user, result == ERROR_SUCCESS ? state : nullptr);
+    }
+    return result;
+}
+
+extern "C" __declspec(dllexport) DWORD WINAPI XInputSetState(DWORD user, void* vibration) {
