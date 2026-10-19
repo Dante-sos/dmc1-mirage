@@ -322,3 +322,21 @@ const char* name_for(const uint8_t* ids, const char* const* names, size_t count,
     }
     return "unknown";
 }
+
+void switch_melee() {
+    uint8_t* body = actor();
+    if (!body) {
+        return;
+    }
+    uint8_t current = body[kMeleeOffset];
+    size_t index = 0;
+    bool found = false;
+    for (size_t i = 0; i < std::size(kMeleeIds); ++i) {
+        if (kMeleeIds[i] == current) {
+            index = i;
+            found = true;
+            break;
+        }
+    }
+    if (found) {
+        index = (index + 1) % std::size(kMeleeIds);
