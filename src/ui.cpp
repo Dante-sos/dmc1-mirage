@@ -38,3 +38,23 @@ const char* kMissions[kMissionCount] = {
     "21  Living Cave",
     "22  Legendary Battle",
     "23  Mother's Guide",
+};
+
+constexpr int kModeValues[] = {2, 3, 5, 6};
+const char* kModeNames[] = {"Easy", "Normal", "Hard", "Dante Must Die"};
+
+constexpr WORD kMenuButtons = 0x0001 | 0x0002 | 0x0004 | 0x0008 | 0x1000 | 0x2000;
+constexpr int kCell = 40;
+constexpr int kCols = 16;
+constexpr int kAtlas = kCell * kCols;
+
+void log_line(const char* fmt, ...) {
+    wchar_t path[MAX_PATH]{};
+    GetModuleFileNameW(nullptr, path, MAX_PATH);
+    wchar_t* slash = wcsrchr(path, L'\\');
+    if (!slash) {
+        return;
+    }
+    wcscpy(slash + 1, L"dmc1-switch.log");
+    FILE* file = _wfopen(path, L"a");
+    if (!file) {
