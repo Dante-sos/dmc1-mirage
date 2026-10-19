@@ -1,0 +1,9 @@
+build/
+*.o
+*.obj
+*.dll
+*.exe
+*.log
+*.sav
+payload.h
+.vs/
