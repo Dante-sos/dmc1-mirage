@@ -22,3 +22,15 @@ void load_real() {
     }
     real_get_state = reinterpret_cast<XInputGetStateFn>(GetProcAddress(library, "XInputGetState"));
     real_set_state = reinterpret_cast<XInputSetStateFn>(GetProcAddress(library, "XInputSetState"));
+}
+
+bool process_is_dmc1() {
+    wchar_t path[MAX_PATH]{};
+    GetModuleFileNameW(nullptr, path, MAX_PATH);
+    const wchar_t* name = wcsrchr(path, L'\\');
+    name = name ? name + 1 : path;
+    return _wcsicmp(name, L"dmc1.exe") == 0;
+}
+
+}  // namespace
+
