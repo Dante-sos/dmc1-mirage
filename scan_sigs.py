@@ -58,3 +58,23 @@ patterns = {
     "event_mov": bytes.fromhex("41 89 80 B4 1C 00 00"),
     "mainloop": bytes.fromhex("41 8B 93 9C 00 00 00"),
     "mov_rdx_then_rcx": bytes.fromhex("48 8B 15"),
+}
+
+text = next(s for s in sections if s[0] == ".text")
+_, va, sz, raw = text
+blob = data[raw : raw + sz]
+
+
+def hits(pat, limit=12):
+    found = []
+    start = 0
+    while len(found) < limit:
+        i = blob.find(pat, start)
+        if i < 0:
+            break
+        found.append(va + i)
+        start = i + 1
+    return found
+
+
+for name, pat in patterns.items():
