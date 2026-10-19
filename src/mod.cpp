@@ -304,3 +304,21 @@ extern "C" void apply_pending_at_load() {
     uint8_t previous = 0;
     write_mission_choice(mission, mode, previous);
     uint8_t* data = session();
+    if (data) {
+        uint32_t flags = 0;
+        std::memcpy(&flags, data + kEventOffset, sizeof(flags));
+        flags |= 0x800;
+        std::memcpy(data + kEventOffset, &flags, sizeof(flags));
+    }
+    place_mission_spawn(mission);
+    log_line("mission load overridden from %u to %d mode %d", previous, mission, mode);
+}
+
+const char* name_for(const uint8_t* ids, const char* const* names, size_t count, uint8_t id) {
+    for (size_t i = 0; i < count; ++i) {
+        if (ids[i] == id) {
+            return names[i];
+        }
+    }
+    return "unknown";
+}
