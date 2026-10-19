@@ -394,3 +394,21 @@ void keep_chosen_mission() {
             std::memcpy(data + kEventOffset, &flags, sizeof(flags));
         }
         place_mission_spawn(mission);
+        g_mission_restores++;
+        log_line("mission restored from %u to %d", previous, mission);
+    }
+    if (in_game() && g_stage_tick != 0 && static_cast<int32_t>(GetTickCount() - g_stage_tick) > 8000) {
+        g_pending_mission.store(-1);
+        g_mission_staged.store(false);
+        log_line("mission override finished");
+    }
+}
+
+extern "C" void apply_weapon_requests() {
+    keep_chosen_mission();
+    if (!in_game()) {
+        g_want_melee.store(false);
+        g_want_ranged.store(false);
+        return;
+    }
+    if (g_want_melee.exchange(false)) {
