@@ -1038,3 +1038,23 @@ bool split_bottom_labels(const uint8_t* pixels, int width, int height, int pitch
                 right = x;
                 hole = 0;
             } else if (left >= 0 && ++hole > widest) {
+                widest = hole;
+            }
+        }
+        if (left >= 0 && right - left > width / 2 && widest > width / 7) {
+            split_rows++;
+        }
+    }
+    return split_rows >= 3;
+}
+
+void classify_probe(const uint8_t* pixels, int width, int height, int pitch) {
+    if (g_screen == Screen::Missions || g_inject_on.load() || g_probe_cooldown > 0) {
+        return;
+    }
+    if (width < 16 || height < 16) {
+        return;
+    }
+    auto row_at = [&](float global) {
+        float local = (global - 0.14f) / 0.84f;
+        int y = static_cast<int>(local * static_cast<float>(height));
