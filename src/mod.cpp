@@ -142,3 +142,21 @@ uint8_t* alloc_near(uintptr_t target, size_t size) {
 
 void emit(uint8_t*& cursor, std::initializer_list<uint8_t> bytes) {
     for (uint8_t byte : bytes) {
+        *cursor++ = byte;
+    }
+}
+
+void emit_u64(uint8_t*& cursor, uint64_t value) {
+    std::memcpy(cursor, &value, sizeof(value));
+    cursor += sizeof(value);
+}
+
+// Saves every general register and xmm0-5, calls fn, runs the stolen bytes, then jumps back.
+uint8_t* write_stub(uint8_t* cursor, void (*fn)(), const uint8_t* stolen, size_t stolen_len, void* ret) {
+    emit(cursor, {0x9C});
+    emit(cursor, {0x50, 0x51, 0x52, 0x53, 0x55, 0x56, 0x57});
+    emit(cursor, {0x41, 0x50, 0x41, 0x51, 0x41, 0x52, 0x41, 0x53});
+    emit(cursor, {0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57});
+    emit(cursor, {0x48, 0x89, 0xE3});
+    emit(cursor, {0x48, 0x83, 0xE4, 0xF0});
+    emit(cursor, {0x48, 0x81, 0xEC, 0x80, 0x00, 0x00, 0x00});
