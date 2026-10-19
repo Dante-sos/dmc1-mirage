@@ -502,3 +502,21 @@ void mod_arm_mission(int mission, int mode) {
 
 void mod_clear_mission() {
     g_pending_mission.store(-1);
+    log_line("mission override cleared");
+}
+
+int mod_armed_mission() {
+    return g_pending_mission.load();
+}
+
+int mod_armed_mode() {
+    return g_pending_mode.load();
+}
+
+bool mod_in_game() {
+    return in_game();
+}
+
+void mod_start() {
+    g_base = reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
+    wchar_t path[MAX_PATH]{};
