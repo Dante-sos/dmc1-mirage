@@ -12,3 +12,17 @@ stub_sample:
     push rdi
     push r8
     push r9
+    push r10
+    push r11
+    push r12
+    push r13
+    push r14
+    push r15
+    mov rbx, rsp
+    and rsp, -16
+    sub rsp, 0x80
+    movaps [rsp+0x20], xmm0
+    movaps [rsp+0x30], xmm1
+    movaps [rsp+0x40], xmm2
+    movaps [rsp+0x50], xmm3
+    movaps [rsp+0x60], xmm4
