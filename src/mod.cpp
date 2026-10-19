@@ -70,3 +70,21 @@ bool g_hooks_ready = false;
 
 void log_line(const char* fmt, ...) {
     if (!g_log) {
+        return;
+    }
+    SYSTEMTIME st{};
+    GetLocalTime(&st);
+    std::fprintf(g_log, "%02u:%02u:%02u ", st.wHour, st.wMinute, st.wSecond);
+    va_list args;
+    va_start(args, fmt);
+    std::vfprintf(g_log, fmt, args);
+    va_end(args);
+    std::fputc('\n', g_log);
+    std::fflush(g_log);
+}
+
+uint8_t* session() {
+    auto slot = reinterpret_cast<uint8_t**>(g_base + kSessionPtrRva);
+    return *slot;
+}
+
