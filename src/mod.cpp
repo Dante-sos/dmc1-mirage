@@ -484,3 +484,21 @@ void install_hooks() {
         log_line("hook patch failed");
         return;
     }
+    g_hooks_ready = true;
+    log_line("hooks installed main=%p load=%p start=%p", main_stub, load_stub, start_stub);
+}
+
+}  // namespace
+
+void mod_arm_mission(int mission, int mode) {
+    g_mission_staged.store(false);
+    g_stage_tick = 0;
+    g_mission_restores = 0;
+    g_pending_mode.store(mode);
+    g_applies_left.store(8);
+    g_pending_mission.store(mission);
+    log_line("armed mission %d mode %d", mission, mode);
+}
+
+void mod_clear_mission() {
+    g_pending_mission.store(-1);
