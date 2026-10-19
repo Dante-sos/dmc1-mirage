@@ -598,3 +598,23 @@ void draw_text(std::vector<Vertex>& verts, float x, float y, const char* text, f
         cursor += static_cast<float>(advance) * scale + tracking;
     }
 }
+
+void draw_text_outlined(std::vector<Vertex>& verts, float x, float y, const char* text, float scale, float tracking, float r, float g, float b, float a) {
+    const float offset = 1.6f * scale;
+    const float ox[8] = {-offset, offset, 0, 0, -offset, offset, -offset, offset};
+    const float oy[8] = {0, 0, -offset, offset, -offset, -offset, offset, offset};
+    for (int i = 0; i < 8; ++i) {
+        draw_text(verts, x + ox[i], y + oy[i], text, scale, tracking, 0.02f, 0.0f, 0.0f, 0.95f);
+    }
+    draw_text(verts, x, y, text, scale, tracking, r, g, b, a);
+}
+
+void submit(std::vector<Vertex>& verts, float width, float height, float tex_mode, ID3D11ShaderResourceView* texture) {
+    if (verts.empty() || !texture) {
+        verts.clear();
+        return;
+    }
+    if (verts.size() > g_vb_capacity) {
+        if (g_vb) {
+            g_vb->Release();
+            g_vb = nullptr;
