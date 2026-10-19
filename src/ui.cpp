@@ -98,3 +98,23 @@ WORD g_prev_buttons = 0;
 bool g_key_down[7] = {};
 
 using CreateFn = HRESULT(WINAPI*)(IDXGIAdapter*, D3D_DRIVER_TYPE, HMODULE, UINT, const D3D_FEATURE_LEVEL*, UINT, UINT, const DXGI_SWAP_CHAIN_DESC*, IDXGISwapChain**, ID3D11Device**, D3D_FEATURE_LEVEL*, ID3D11DeviceContext**);
+using PresentFn = HRESULT(STDMETHODCALLTYPE*)(IDXGISwapChain*, UINT, UINT);
+
+CreateFn g_create = nullptr;
+PresentFn g_present = nullptr;
+void** g_vtable_copy = nullptr;
+
+ID3D11Device* g_device = nullptr;
+ID3D11DeviceContext* g_context = nullptr;
+ID3D11VertexShader* g_vs = nullptr;
+ID3D11PixelShader* g_ps = nullptr;
+ID3D11InputLayout* g_layout = nullptr;
+ID3D11Buffer* g_vb = nullptr;
+ID3D11Buffer* g_cb = nullptr;
+ID3D11ShaderResourceView* g_font_view = nullptr;
+ID3D11ShaderResourceView* g_bg_view = nullptr;
+int g_bg_w = 0;
+int g_bg_h = 0;
+ID3D11Texture2D* g_probe = nullptr;
+bool g_probe_pending = false;
+int g_probe_w = 0;
