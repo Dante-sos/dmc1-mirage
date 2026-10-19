@@ -118,3 +118,23 @@ int g_bg_h = 0;
 ID3D11Texture2D* g_probe = nullptr;
 bool g_probe_pending = false;
 int g_probe_w = 0;
+int g_probe_h = 0;
+ID3D11SamplerState* g_sampler = nullptr;
+ID3D11BlendState* g_blend = nullptr;
+ID3D11DepthStencilState* g_depth = nullptr;
+ID3D11RasterizerState* g_raster = nullptr;
+size_t g_vb_capacity = 0;
+bool g_ready = false;
+bool g_logged_present_fail = false;
+
+void release_renderer() {
+    auto drop = [](auto*& object) {
+        if (object) {
+            object->Release();
+            object = nullptr;
+        }
+    };
+    drop(g_vs);
+    drop(g_ps);
+    drop(g_layout);
+    drop(g_vb);
