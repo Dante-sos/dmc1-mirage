@@ -110,3 +110,19 @@ bool load_sibling(const wchar_t* name, std::vector<unsigned char>& bytes) {
     DWORD read = 0;
     ReadFile(file, bytes.data(), size, &read, nullptr);
     CloseHandle(file);
+    bytes.resize(read);
+    return read == size && size > 0;
+}
+
+std::wstring find_game() {
+    std::vector<std::wstring> libraries;
+    std::wstring steam = reg_string(HKEY_CURRENT_USER, L"Software\\Valve\\Steam", L"SteamPath");
+    if (steam.empty()) {
+        steam = reg_string(HKEY_LOCAL_MACHINE, L"SOFTWARE\\WOW6432Node\\Valve\\Steam", L"InstallPath");
+    }
+    if (!steam.empty()) {
+        libraries.push_back(steam);
+        collect_paths(read_file(join(steam, L"steamapps\\libraryfolders.vdf")), libraries);
+    }
+    libraries.push_back(L"C:\\Program Files (x86)\\Steam");
+    for (const std::wstring& library : libraries) {
