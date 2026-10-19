@@ -448,3 +448,21 @@ bool expect_bytes(void* address, const uint8_t* bytes, size_t len, const char* l
         return true;
     }
     log_line("%s bytes do not match, hook skipped", label);
+    return false;
+}
+
+void install_hooks() {
+    const uint8_t main_bytes[] = {0x41, 0x8B, 0x93, 0x9C, 0x00, 0x00, 0x00};
+    const uint8_t load_bytes[] = {0x66, 0x89, 0x81, 0xCE, 0x1B, 0x00, 0x00};
+    const uint8_t start_bytes[] = {0x0F, 0xB6, 0x41, 0x10, 0x88, 0x85, 0x64, 0x1E, 0x00, 0x00};
+    const uint8_t melee_bytes[] = {0x48, 0x89, 0x5C, 0x24, 0x08};
+    const uint8_t ranged_bytes[] = {0x85, 0xC9};
+    auto* main_site = reinterpret_cast<uint8_t*>(g_base + kMainLoopRva);
+    auto* load_site = reinterpret_cast<uint8_t*>(g_base + kLoadSaveRva);
+    auto* start_site = reinterpret_cast<uint8_t*>(g_base + kStartMissionRva);
+    if (!expect_bytes(main_site, main_bytes, sizeof(main_bytes), "main loop") ||
+        !expect_bytes(load_site, load_bytes, sizeof(load_bytes), "mission load") ||
+        !expect_bytes(start_site, start_bytes, sizeof(start_bytes), "mission start") ||
+        !expect_bytes(reinterpret_cast<void*>(g_base + kUpdateMeleeRva), melee_bytes, sizeof(melee_bytes), "melee update") ||
+        !expect_bytes(reinterpret_cast<void*>(g_base + kUpdateRangedRva), ranged_bytes, sizeof(ranged_bytes), "gun update")) {
+        return;
