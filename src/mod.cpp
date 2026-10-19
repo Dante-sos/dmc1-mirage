@@ -214,3 +214,21 @@ void write_u32(uint8_t* address, uint32_t value) {
 
 void write_f32(uint8_t* address, float value) {
     std::memcpy(address, &value, sizeof(value));
+}
+
+// The save copy and the session reset both run while a mission is starting, and
+// whichever runs last was putting mission 1 back. Keep rewriting until that burst ends.
+bool claim_pending(int& mission, int& mode) {
+    mission = g_pending_mission.load();
+    if (mission < 1 || g_applies_left.load() < 1) {
+        return false;
+    }
+    mode = g_pending_mode.load();
+    g_applies_left.fetch_sub(1);
+    return true;
+}
+
+void write_mission_choice(int mission, int mode, uint8_t& previous) {
+    uint8_t* data = session();
+    if (data) {
+        previous = data[kMissionOffset];
