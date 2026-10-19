@@ -16,3 +16,21 @@ for i in range(nsec):
 
 
 def r2o(rva):
+    for name, va, sz, raw, rsz in sections:
+        if va <= rva < va + sz:
+            return raw + (rva - va)
+    return None
+
+
+text = next(s for s in sections if s[0] == ".text")
+_, va, sz, raw, rsz = text
+blob = data[raw : raw + rsz]
+
+
+def dump(rva, n=48):
+    off = r2o(rva)
+    print(hex(rva), data[off : off + n].hex(" "))
+
+
+print("expertise context")
+dump(0x2C3C80, 64)
