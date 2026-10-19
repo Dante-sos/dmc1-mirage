@@ -318,3 +318,23 @@ void load_background(ID3D11Device* device) {
         }
     }
     g_bg_w = static_cast<int>(data.Width);
+    g_bg_h = static_cast<int>(data.Height);
+    bitmap.UnlockBits(&data);
+    UINT bg_w = data.Width;
+    UINT bg_h = data.Height;
+    D3D11_TEXTURE2D_DESC desc{};
+    desc.Width = bg_w;
+    desc.Height = bg_h;
+    desc.MipLevels = 1;
+    desc.ArraySize = 1;
+    desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    desc.SampleDesc.Count = 1;
+    desc.Usage = D3D11_USAGE_IMMUTABLE;
+    desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    D3D11_SUBRESOURCE_DATA sub{};
+    sub.pSysMem = pixels.data();
+    sub.SysMemPitch = bg_w * 4;
+    ID3D11Texture2D* texture = nullptr;
+    HRESULT result = device->CreateTexture2D(&desc, &sub, &texture);
+    if (FAILED(result)) {
+        log_line("mission background texture failed");
