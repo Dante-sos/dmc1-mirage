@@ -94,3 +94,19 @@ bool write_bytes(const std::wstring& path, const unsigned char* data, unsigned s
     DWORD wrote = 0;
     BOOL ok = WriteFile(file, data, size, &wrote, nullptr);
     CloseHandle(file);
+    return ok && wrote == size;
+}
+
+bool load_sibling(const wchar_t* name, std::vector<unsigned char>& bytes) {
+    wchar_t self[MAX_PATH]{};
+    GetModuleFileNameW(nullptr, self, MAX_PATH);
+    std::wstring path = join(parent_of(self), name);
+    HANDLE file = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (file == INVALID_HANDLE_VALUE) {
+        return false;
+    }
+    DWORD size = GetFileSize(file, nullptr);
+    bytes.resize(size);
+    DWORD read = 0;
+    ReadFile(file, bytes.data(), size, &read, nullptr);
+    CloseHandle(file);
