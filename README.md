@@ -14,3 +14,11 @@ Launch Devil May Cry 1 from Steam after that.
 
 ## Play
 
+On the title screen, Mission Select sits under Load Data. Pick a mission and a difficulty, then confirm. The mission starts from that mission's opening room.
+
+During a fight, tap the left trigger to cycle melee weapons and the right trigger to cycle guns. Hold either trigger to use Devil Trigger or shoot, as in the original game. The tap window defaults to 180 ms and can be changed in `dmc1-switch.ini` next to the game:
+
+```
+[switch]
+tap_ms=180
+trigger_threshold=30
