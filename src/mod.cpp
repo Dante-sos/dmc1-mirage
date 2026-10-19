@@ -88,3 +88,21 @@ uint8_t* session() {
     return *slot;
 }
 
+uint8_t* actor() {
+    auto slot = reinterpret_cast<uint8_t**>(g_base + kActorPtrRva);
+    return *slot;
+}
+
+bool in_game() {
+    uint8_t* data = session();
+    if (!data) {
+        return false;
+    }
+    uint32_t event = 0;
+    std::memcpy(&event, data + kEventOffset, sizeof(event));
+    return (event & kInGameFlag) != 0;
+}
+
+void read_ini() {
+    wchar_t path[MAX_PATH]{};
+    GetModuleFileNameW(nullptr, path, MAX_PATH);
