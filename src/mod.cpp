@@ -286,3 +286,21 @@ extern "C" void apply_pending_at_start() {
     int mission = 0;
     int mode = 0;
     if (!claim_pending(mission, mode)) {
+        return;
+    }
+    uint8_t previous = 0;
+    write_mission_choice(mission, mode, previous);
+    g_stage_tick = GetTickCount();
+    g_mission_staged.store(true);
+    log_line("mission staged from %u to %d mode %d", previous, mission, mode);
+}
+
+extern "C" void apply_pending_at_load() {
+    int mission = 0;
+    int mode = 0;
+    if (!claim_pending(mission, mode)) {
+        return;
+    }
+    uint8_t previous = 0;
+    write_mission_choice(mission, mode, previous);
+    uint8_t* data = session();
