@@ -196,3 +196,21 @@ bool patch_jump(uint8_t* site, size_t len, uint8_t* dest) {
     int32_t rel32 = static_cast<int32_t>(rel);
     std::memcpy(site + 1, &rel32, sizeof(rel32));
     for (size_t i = 5; i < len; ++i) {
+        site[i] = 0x90;
+    }
+    VirtualProtect(site, len, old, &old);
+    FlushInstructionCache(GetCurrentProcess(), site, len);
+    return true;
+}
+
+uint8_t* event_data() {
+    auto slot = reinterpret_cast<uint8_t**>(g_base + kEventPtrRva);
+    return *slot;
+}
+
+void write_u32(uint8_t* address, uint32_t value) {
+    std::memcpy(address, &value, sizeof(value));
+}
+
+void write_f32(uint8_t* address, float value) {
+    std::memcpy(address, &value, sizeof(value));
