@@ -698,3 +698,23 @@ void draw_title_menu(float width, float height) {
         scale = 0.7f;
     }
     if (scale > 1.65f) {
+        scale = 1.65f;
+    }
+    float tracking = 1.05f * scale;
+    float step = 0.052f;
+    float band_top = height * (g_menu_anchor - 0.034f);
+    float band_bot = height * (g_menu_anchor + step * 3.0f + 0.05f);
+    float band_w = width * 0.72f;
+    draw_rect(verts, (width - band_w) * 0.5f, band_top, band_w, band_bot - band_top, 0.0f, 0.0f, 0.0f, 1.0f);
+    for (int i = 0; i < 4; ++i) {
+        float item_w = text_width(kTitleItems[i], scale, tracking);
+        float x = (width - item_w) * 0.5f;
+        float y = height * (g_menu_anchor + step * static_cast<float>(i)) - static_cast<float>(kCell) * scale * 0.5f;
+        if (i == g_title_index) {
+            draw_text_outlined(verts, x, y, kTitleItems[i], scale, tracking, 1.0f, 0.98f, 0.9f, 1.0f);
+        } else if (i == 1) {
+            draw_text_outlined(verts, x, y, kTitleItems[i], scale, tracking, 0.78f, 0.7f, 0.48f, 1.0f);
+        } else {
+            draw_text_outlined(verts, x, y, kTitleItems[i], scale, tracking, 0.55f, 0.53f, 0.5f, 1.0f);
+        }
+    }
