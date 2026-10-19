@@ -126,3 +126,19 @@ std::wstring find_game() {
     }
     libraries.push_back(L"C:\\Program Files (x86)\\Steam");
     for (const std::wstring& library : libraries) {
+        std::wstring exe = join(library, L"steamapps\\common\\Devil May Cry HD Collection\\dmc1.exe");
+        if (exists(exe)) {
+            return exe;
+        }
+    }
+    wchar_t chosen[MAX_PATH]{};
+    OPENFILENAMEW dialog{};
+    dialog.lStructSize = sizeof(dialog);
+    dialog.lpstrFilter = L"Devil May Cry 1\0dmc1.exe\0";
+    dialog.lpstrFile = chosen;
+    dialog.nMaxFile = MAX_PATH;
+    dialog.lpstrTitle = L"Select dmc1.exe";
+    dialog.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
+    if (!GetOpenFileNameW(&dialog)) {
+        return L"";
+    }
