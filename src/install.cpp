@@ -158,3 +158,19 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     const unsigned char* background = nullptr;
     unsigned background_size = 0;
 #ifdef DMC1_EMBEDDED
+    dll = kDll;
+    dll_size = kDllSize;
+    background = kBackground;
+    background_size = kBackgroundSize;
+#else
+    std::vector<unsigned char> dll_bytes;
+    std::vector<unsigned char> background_bytes;
+    if (!load_sibling(L"XINPUT9_1_0.dll", dll_bytes)) {
+        MessageBoxW(nullptr, L"XINPUT9_1_0.dll was not found next to this installer.", L"DMC1 Switch", MB_ICONERROR);
+        return 1;
+    }
+    load_sibling(L"dmc1-mission-bg.jpg", background_bytes);
+    dll = dll_bytes.data();
+    dll_size = static_cast<unsigned>(dll_bytes.size());
+    if (!background_bytes.empty()) {
+        background = background_bytes.data();
