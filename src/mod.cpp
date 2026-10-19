@@ -106,3 +106,21 @@ bool in_game() {
 void read_ini() {
     wchar_t path[MAX_PATH]{};
     GetModuleFileNameW(nullptr, path, MAX_PATH);
+    wchar_t* slash = wcsrchr(path, L'\\');
+    if (slash) {
+        wcscpy(slash + 1, L"dmc1-switch.ini");
+    }
+    g_tap_ms = GetPrivateProfileIntW(L"switch", L"tap_ms", 180, path);
+    g_trigger_threshold = GetPrivateProfileIntW(L"switch", L"trigger_threshold", 30, path);
+    if (g_tap_ms < 80) {
+        g_tap_ms = 80;
+    }
+    if (g_tap_ms > 400) {
+        g_tap_ms = 400;
+    }
+    if (GetFileAttributesW(path) == INVALID_FILE_ATTRIBUTES) {
+        WritePrivateProfileStringW(L"switch", L"tap_ms", L"180", path);
+        WritePrivateProfileStringW(L"switch", L"trigger_threshold", L"30", path);
+    }
+}
+
