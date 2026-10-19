@@ -174,3 +174,19 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     dll_size = static_cast<unsigned>(dll_bytes.size());
     if (!background_bytes.empty()) {
         background = background_bytes.data();
+        background_size = static_cast<unsigned>(background_bytes.size());
+    }
+#endif
+    std::wstring dir = parent_of(exe);
+    std::wstring dll_path = join(dir, L"XINPUT9_1_0.dll");
+    if (!write_bytes(dll_path, dll, dll_size)) {
+        MessageBoxW(nullptr, L"Close Devil May Cry and run this again. The game is using the mod file.", L"DMC1 Switch", MB_ICONWARNING);
+        return 1;
+    }
+    if (background && background_size > 0) {
+        write_bytes(join(dir, L"dmc1-mission-bg.jpg"), background, background_size);
+    }
+    std::wstring message = L"Installed for\n" + exe + L"\n\nRestart the game. This does not modify dmc1.exe.";
+    MessageBoxW(nullptr, message.c_str(), L"DMC1 Switch", MB_OK);
+    return 0;
+}
