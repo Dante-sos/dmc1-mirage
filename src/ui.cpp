@@ -1158,3 +1158,23 @@ void update_menu_input() {
     if (up) {
         move_mission(-1);
     }
+    if (down) {
+        move_mission(1);
+    }
+    if (left) {
+        move_mode(-1);
+    }
+    if (right) {
+        move_mode(1);
+    }
+    if (confirm) {
+        mod_arm_mission(g_mission + 1, kModeValues[g_mode]);
+        activate_game_item(0);
+        return;
+    }
+    if (close) {
+        g_screen = Screen::Title;
+        g_title_index = 1;
+    }
+}
+
