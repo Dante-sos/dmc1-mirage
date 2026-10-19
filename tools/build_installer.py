@@ -43,3 +43,18 @@ def main():
         "-mwindows",
         "-DDMC1_EMBEDDED",
         "-I",
+        str(root),
+        "-o",
+        str(out),
+        str(root / "src" / "install.cpp"),
+        "-lcomdlg32",
+        "-lshell32",
+        "-lole32",
+        "-luuid",
+    ]
+    subprocess.check_call(command)
+    print(out)
+
+
+if __name__ == "__main__":
+    main()
