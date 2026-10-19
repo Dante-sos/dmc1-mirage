@@ -138,3 +138,23 @@ void release_renderer() {
     drop(g_ps);
     drop(g_layout);
     drop(g_vb);
+    drop(g_cb);
+    drop(g_font_view);
+    drop(g_bg_view);
+    drop(g_probe);
+    g_bg_w = 0;
+    g_bg_h = 0;
+    g_probe_pending = false;
+    g_probe_w = 0;
+    g_probe_h = 0;
+    drop(g_sampler);
+    drop(g_blend);
+    drop(g_depth);
+    drop(g_raster);
+    drop(g_context);
+    drop(g_device);
+    g_vb_capacity = 0;
+    g_ready = false;
+}
+
+bool compile_shader(const char* source, const char* entry, const char* target, ID3DBlob** blob) {
