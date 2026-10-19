@@ -78,3 +78,19 @@ void collect_paths(const std::string& text, std::vector<std::wstring>& out) {
                 wide.push_back(L'\\');
                 ++i;
             } else {
+                wide.push_back(static_cast<unsigned char>(raw[i]));
+            }
+        }
+        out.push_back(wide);
+        at = end + 1;
+    }
+}
+
+bool write_bytes(const std::wstring& path, const unsigned char* data, unsigned size) {
+    HANDLE file = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (file == INVALID_HANDLE_VALUE) {
+        return false;
+    }
+    DWORD wrote = 0;
+    BOOL ok = WriteFile(file, data, size, &wrote, nullptr);
+    CloseHandle(file);
