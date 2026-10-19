@@ -1318,3 +1318,23 @@ HRESULT STDMETHODCALLTYPE resize_hook(IDXGISwapChain* swap, UINT count, UINT wid
 
 void hook_swap_chain(IDXGISwapChain* swap) {
     if (!swap || g_present) {
+        return;
+    }
+    auto** vtable = *reinterpret_cast<void***>(swap);
+    g_vtable_copy = new void*[18];
+    std::memcpy(g_vtable_copy, vtable, sizeof(void*) * 18);
+    g_present = reinterpret_cast<PresentFn>(g_vtable_copy[8]);
+    g_resize = reinterpret_cast<ResizeFn>(g_vtable_copy[13]);
+    g_vtable_copy[8] = reinterpret_cast<void*>(present_hook);
+    g_vtable_copy[13] = reinterpret_cast<void*>(resize_hook);
+    *reinterpret_cast<void***>(swap) = g_vtable_copy;
+    DXGI_SWAP_CHAIN_DESC desc{};
+    if (SUCCEEDED(swap->GetDesc(&desc))) {
+        log_line("present hook installed %ux%u effect %u", desc.BufferDesc.Width, desc.BufferDesc.Height, desc.SwapEffect);
+    } else {
+        log_line("present hook installed");
+    }
+}
+
+HRESULT WINAPI create_hook(IDXGIAdapter* adapter, D3D_DRIVER_TYPE driver, HMODULE software, UINT flags, const D3D_FEATURE_LEVEL* levels, UINT level_count, UINT sdk, const DXGI_SWAP_CHAIN_DESC* desc, IDXGISwapChain** swap, ID3D11Device** device, D3D_FEATURE_LEVEL* level, ID3D11DeviceContext** context) {
+    HRESULT result = g_create(adapter, driver, software, flags, levels, level_count, sdk, desc, swap, device, level, context);
