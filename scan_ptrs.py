@@ -34,3 +34,21 @@ def dump(rva, n=48):
 
 print("expertise context")
 dump(0x2C3C80, 64)
+print("load save context")
+dump(0x255B40, 128)
+print("init session")
+dump(0x3F9CE0, 80)
+
+needles = {
+    "mission_1E64": bytes.fromhex("64 1E 00 00"),
+    "event_1CA4": bytes.fromhex("A4 1C 00 00"),
+    "mode_near": bytes.fromhex("66 1E 00 00"),
+}
+for name, pat in needles.items():
+    found = []
+    start = 0
+    while len(found) < 20:
+        i = blob.find(pat, start)
+        if i < 0:
+            break
+        found.append(va + i - 3)
