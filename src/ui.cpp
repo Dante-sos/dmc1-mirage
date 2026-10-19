@@ -678,3 +678,23 @@ void draw_background(std::vector<Vertex>& verts, float width, float height) {
             u0 = pad;
             u1 = 1.0f - pad;
         } else {
+            float visible = image_aspect / screen_aspect;
+            float pad = (1.0f - visible) * 0.5f;
+            v0 = pad;
+            v1 = 1.0f - pad;
+        }
+    }
+    push_quad(verts, 0, 0, width, height, u0, v0, u1, v1, 1, 1, 1, 1);
+}
+
+const char* kTitleItems[] = {"LOAD DATA", "MISSION SELECT", "NEW GAME", "OPTION"};
+constexpr float kTitleRows[] = {0.662f, 0.735f, 0.808f, 0.881f};
+
+void draw_title_menu(float width, float height) {
+    std::vector<Vertex> verts;
+    verts.reserve(4000);
+    float scale = height / 860.0f;
+    if (scale < 0.7f) {
+        scale = 0.7f;
+    }
+    if (scale > 1.65f) {
