@@ -538,3 +538,23 @@ void restore_state(ID3D11DeviceContext* context, DxState& state) {
     }
     drop(state.blend);
     drop(state.depth);
+    drop(state.raster);
+    for (auto& rtv : state.rtvs) {
+        drop(rtv);
+    }
+    drop(state.dsv);
+}
+
+void push_quad(std::vector<Vertex>& verts, float x, float y, float w, float h, float u0, float v0, float u1, float v1, float r, float g, float b, float a) {
+    Vertex q[6] = {
+        {x, y, u0, v0, r, g, b, a},
+        {x + w, y, u1, v0, r, g, b, a},
+        {x, y + h, u0, v1, r, g, b, a},
+        {x, y + h, u0, v1, r, g, b, a},
+        {x + w, y, u1, v0, r, g, b, a},
+        {x + w, y + h, u1, v1, r, g, b, a},
+    };
+    verts.insert(verts.end(), q, q + 6);
+}
+
+void draw_rect(std::vector<Vertex>& verts, float x, float y, float w, float h, float r, float g, float b, float a) {
