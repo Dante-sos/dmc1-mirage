@@ -718,3 +718,23 @@ void draw_title_menu(float width, float height) {
             draw_text_outlined(verts, x, y, kTitleItems[i], scale, tracking, 0.55f, 0.53f, 0.5f, 1.0f);
         }
     }
+    int armed = mod_armed_mission();
+    if (armed > 0) {
+        const char* mode_name = "Normal";
+        int mode = mod_armed_mode();
+        for (int i = 0; i < 4; ++i) {
+            if (kModeValues[i] == mode) {
+                mode_name = kModeNames[i];
+            }
+        }
+        char status[64];
+        std::snprintf(status, sizeof(status), "MISSION %d   %s", armed, mode_name);
+        float status_scale = scale * 0.62f;
+        float status_w = text_width(status, status_scale, tracking * 0.4f);
+        draw_text(verts, (width - status_w) * 0.5f, height * (g_menu_anchor - 0.055f), status, status_scale, tracking * 0.4f, 0.86f, 0.72f, 0.38f, 1.0f);
+    }
+    submit(verts, width, height, 0.0f, g_font_view);
+}
+
+void draw_mission_screen(float width, float height) {
+    std::vector<Vertex> verts;
