@@ -898,3 +898,23 @@ int pixel_lum(const uint8_t* px) {
         lum = px[2];
     }
     return lum;
+}
+
+float average_lum(const uint8_t* pixels, int width, int height, int pitch, int y0, int y1) {
+    if (y0 < 0) {
+        y0 = 0;
+    }
+    if (y1 > height) {
+        y1 = height;
+    }
+    int x0 = width / 5;
+    int x1 = width - x0;
+    long long sum = 0;
+    int count = 0;
+    for (int y = y0; y < y1; y += 2) {
+        const uint8_t* row = pixels + y * pitch;
+        for (int x = x0; x < x1; x += 4) {
+            sum += pixel_lum(row + x * 4);
+            count++;
+        }
+    }
