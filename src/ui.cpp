@@ -558,3 +558,23 @@ void push_quad(std::vector<Vertex>& verts, float x, float y, float w, float h, f
 }
 
 void draw_rect(std::vector<Vertex>& verts, float x, float y, float w, float h, float r, float g, float b, float a) {
+    float u = 4.0f / static_cast<float>(kAtlas);
+    push_quad(verts, x, y, w, h, u, u, u, u, r, g, b, a);
+}
+
+float text_width(const char* text, float scale, float tracking) {
+    float width = 0;
+    for (const char* ch = text; *ch; ++ch) {
+        unsigned char value = static_cast<unsigned char>(*ch);
+        int advance = (value >= 32 && value <= 126) ? g_glyph_w[value - 32] : kCell / 2;
+        if (advance <= 0) {
+            advance = kCell / 2;
+        }
+        width += static_cast<float>(advance) * scale + tracking;
+    }
+    return width;
+}
+
+void draw_text(std::vector<Vertex>& verts, float x, float y, const char* text, float scale, float tracking, float r, float g, float b, float a) {
+    float cursor = x;
+    float size = static_cast<float>(kCell) * scale;
