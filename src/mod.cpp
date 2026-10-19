@@ -430,3 +430,21 @@ void watch_trigger(BYTE& trigger, TriggerWatch& watch, std::atomic<bool>& reques
         }
         if (!watch.passed && static_cast<int>(now - watch.tick) >= g_tap_ms) {
             watch.passed = true;
+        }
+        if (!watch.passed) {
+            trigger = 0;
+        }
+        return;
+    }
+    if (watch.down && !watch.passed && in_game()) {
+        request.store(true);
+    }
+    watch.down = false;
+    watch.passed = false;
+}
+
+bool expect_bytes(void* address, const uint8_t* bytes, size_t len, const char* label) {
+    if (std::memcmp(address, bytes, len) == 0) {
+        return true;
+    }
+    log_line("%s bytes do not match, hook skipped", label);
