@@ -218,3 +218,23 @@ bool build_font(ID3D11Device* device) {
         GetTextExtentPoint32W(dc, text, 1, &size);
         int width = size.cx + 1;
         if (width < 4) {
+            width = 4;
+        }
+        if (width > kCell - 1) {
+            width = kCell - 1;
+        }
+        g_glyph_w[ch - 32] = width;
+    }
+    auto* pixels = static_cast<uint8_t*>(bits);
+    for (int y = 0; y < 8; ++y) {
+        for (int x = 0; x < 8; ++x) {
+            uint8_t* solid = pixels + (y * kAtlas + x) * 4;
+            solid[0] = solid[1] = solid[2] = solid[3] = 255;
+        }
+    }
+    for (int i = 0; i < kAtlas * kAtlas; ++i) {
+        int x = i % kAtlas;
+        int y = i / kAtlas;
+        if (x < 8 && y < 8) {
+            continue;
+        }
