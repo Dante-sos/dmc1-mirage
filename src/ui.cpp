@@ -998,3 +998,23 @@ bool text_line(const uint8_t* pixels, int width, int height, int pitch, int y0, 
             run++;
             if (run > best) {
                 best = run;
+            }
+        } else if (run > 0) {
+            run = 0;
+        }
+    }
+    int window = y1 - y0;
+    return best >= window / 8 && best <= window * 2 / 3;
+}
+
+bool split_bottom_labels(const uint8_t* pixels, int width, int height, int pitch, int y0, int y1) {
+    if (y0 < 0) {
+        y0 = 0;
+    }
+    if (y1 > height) {
+        y1 = height;
+    }
+    int split_rows = 0;
+    for (int y = y0; y < y1; ++y) {
+        const uint8_t* row = pixels + y * pitch;
+        int left = -1;
