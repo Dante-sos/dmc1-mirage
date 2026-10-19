@@ -418,3 +418,23 @@ float4 ps_main(Vout i) : SV_TARGET {
     device->CreateRasterizerState(&raster, &g_raster);
     if (!build_font(device) || !g_vs || !g_ps || !g_layout || !g_cb) {
         log_line("overlay renderer init failed");
+        release_renderer();
+        return false;
+    }
+    load_background(device);
+    g_ready = true;
+    log_line("overlay renderer ready");
+    return true;
+}
+
+constexpr UINT kSrvSlots = 16;
+
+struct DxState {
+    D3D11_PRIMITIVE_TOPOLOGY topology;
+    ID3D11InputLayout* layout;
+    ID3D11Buffer* vb;
+    UINT stride;
+    UINT offset;
+    ID3D11Buffer* ib;
+    DXGI_FORMAT ib_format;
+    UINT ib_offset;
