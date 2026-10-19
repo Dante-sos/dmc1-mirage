@@ -1138,3 +1138,23 @@ void update_menu_input() {
         if (close) {
             WORD steps[2] = {0x2000, 0};
             g_capture.store(true);
+            start_inject(steps, 2);
+        } else if (confirm) {
+            if (g_title_index == 1) {
+                g_screen = Screen::Missions;
+            } else if (g_title_index == 0) {
+                activate_game_item(0);
+            } else if (g_title_index == 2) {
+                activate_game_item(1);
+            } else {
+                activate_game_item(2);
+            }
+        }
+        return;
+    }
+    if (g_screen != Screen::Missions) {
+        return;
+    }
+    if (up) {
+        move_mission(-1);
+    }
