@@ -30,3 +30,10 @@ Reset on the pause menu returns to the title screen.
 
 The proxy is built with g++ from the `dmc1-switch` directory:
 
+```
+g++ -shared -O2 -std=c++17 -static -static-libgcc -static-libstdc++ -o build\XINPUT9_1_0.dll src\xinput_proxy.cpp src\mod.cpp src\ui.cpp xinput.def -ld3d11 -ldxgi -ld3dcompiler -lgdiplus -lgdi32 -lole32 -luuid -luser32
+```
+
+`tools/build_installer.py` then packs that DLL into `ApplyDMC1Switch.exe`.
+
+This project is not affiliated with Capcom.
