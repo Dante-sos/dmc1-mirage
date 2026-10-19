@@ -52,3 +52,20 @@ for name, pat in needles.items():
         if i < 0:
             break
         found.append(va + i - 3)
+        start = i + 1
+    print(name, len(found), [hex(h) for h in found[:15]])
+
+# Resolve a few mov r64, [rip] that precede a use of +1E64
+print("--- samples around first mission hits ---")
+start = 0
+shown = 0
+pat = bytes.fromhex("64 1E 00 00")
+while shown < 8:
+    i = blob.find(pat, start)
+    if i < 0:
+        break
+    rva = va + i
+    window = blob[i - 12 : i + 4]
+    print(hex(rva), window.hex(" "))
+    start = i + 1
+    shown += 1
