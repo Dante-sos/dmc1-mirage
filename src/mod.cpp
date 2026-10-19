@@ -232,3 +232,21 @@ void write_mission_choice(int mission, int mode, uint8_t& previous) {
     uint8_t* data = session();
     if (data) {
         previous = data[kMissionOffset];
+        data[kMissionOffset] = static_cast<uint8_t>(mission);
+        data[kModeOffset] = static_cast<uint8_t>(mode);
+    }
+    auto slot = reinterpret_cast<uint8_t**>(g_base + kMenuConfigPtrRva);
+    uint8_t* config = slot ? *slot : nullptr;
+    if (config) {
+        config[0x10] = static_cast<uint8_t>(mission);
+        config[0x0B] = static_cast<uint8_t>(mode);
+    }
+}
+
+void place_mission_spawn(int mission) {
+    if (mission < 1 || mission > kMissionSlots) {
+        return;
+    }
+    const uint8_t* entry = reinterpret_cast<uint8_t*>(g_base + kMissionTableRva) + static_cast<uintptr_t>(mission) * 0x20;
+    uint32_t stage = 0;
+    uint32_t room = 0;
