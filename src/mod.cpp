@@ -52,3 +52,21 @@ std::atomic<int> g_pending_mission{-1};
 std::atomic<int> g_pending_mode{3};
 std::atomic<int> g_applies_left{0};
 std::atomic<bool> g_mission_staged{false};
+DWORD g_stage_tick = 0;
+int g_mission_restores = 0;
+
+std::atomic<bool> g_want_melee{false};
+std::atomic<bool> g_want_ranged{false};
+
+struct TriggerWatch {
+    bool down = false;
+    DWORD tick = 0;
+    bool passed = false;
+};
+
+TriggerWatch g_left;
+TriggerWatch g_right;
+bool g_hooks_ready = false;
+
+void log_line(const char* fmt, ...) {
+    if (!g_log) {
