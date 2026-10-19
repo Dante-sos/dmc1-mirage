@@ -518,3 +518,23 @@ void restore_state(ID3D11DeviceContext* context, DxState& state) {
     };
     drop(state.layout);
     drop(state.vb);
+    drop(state.ib);
+    drop(state.vs);
+    drop(state.vs_cb);
+    drop(state.ps);
+    drop(state.ps_cb);
+    drop(state.gs);
+    for (auto& srv : state.vs_srvs) {
+        drop(srv);
+    }
+    for (auto& srv : state.gs_srvs) {
+        drop(srv);
+    }
+    for (auto& srv : state.ps_srvs) {
+        drop(srv);
+    }
+    for (auto& sampler : state.ps_samplers) {
+        drop(sampler);
+    }
+    drop(state.blend);
+    drop(state.depth);
