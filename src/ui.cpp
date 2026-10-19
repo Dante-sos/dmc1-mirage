@@ -1258,3 +1258,23 @@ void paint(IDXGISwapChain* swap) {
     D3D11_TEXTURE2D_DESC desc{};
     back->GetDesc(&desc);
     if (!g_inject_on.load() && g_probe_cooldown == 0 && !g_probe_pending) {
+        queue_probe(back, desc);
+    }
+    if (g_screen == Screen::None) {
+        back->Release();
+        return;
+    }
+    ID3D11RenderTargetView* rtv = nullptr;
+    HRESULT rtv_result = g_device->CreateRenderTargetView(back, nullptr, &rtv);
+    back->Release();
+    if (FAILED(rtv_result) || !rtv) {
+        return;
+    }
+    DxState saved{};
+    save_state(g_context, saved);
+    ID3D11ShaderResourceView* unbound[kSrvSlots] = {};
+    g_context->PSSetShaderResources(0, kSrvSlots, unbound);
+    g_context->VSSetShaderResources(0, kSrvSlots, unbound);
+    g_context->GSSetShaderResources(0, kSrvSlots, unbound);
+    g_context->OMSetRenderTargets(1, &rtv, nullptr);
+    static bool logged_frame = false;
