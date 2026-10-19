@@ -1058,3 +1058,23 @@ void classify_probe(const uint8_t* pixels, int width, int height, int pitch) {
     auto row_at = [&](float global) {
         float local = (global - 0.14f) / 0.84f;
         int y = static_cast<int>(local * static_cast<float>(height));
+        if (y < 0) {
+            y = 0;
+        }
+        if (y > height) {
+            y = height;
+        }
+        return y;
+    };
+    if (split_bottom_labels(pixels, width, height, pitch, row_at(0.86f), row_at(0.99f))) {
+        g_title_hits = 0;
+        g_title_miss = 0;
+        if (g_screen == Screen::Title) {
+            hide_menu();
+        }
+        return;
+    }
+    float backdrop = average_lum(pixels, width, height, pitch, row_at(0.70f), row_at(0.88f));
+    bool title = backdrop < 58.0f && text_line(pixels, width, height, pitch, row_at(0.90f), row_at(0.975f), 145, 0.35f, 1.0f);
+    if (title) {
+        g_title_miss = 0;
