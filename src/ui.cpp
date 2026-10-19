@@ -258,3 +258,23 @@ bool build_font(ID3D11Device* device) {
     desc.Usage = D3D11_USAGE_IMMUTABLE;
     desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
     D3D11_SUBRESOURCE_DATA data{};
+    data.pSysMem = bits;
+    data.SysMemPitch = kAtlas * 4;
+    ID3D11Texture2D* texture = nullptr;
+    HRESULT result = device->CreateTexture2D(&desc, &data, &texture);
+    SelectObject(dc, old_font);
+    SelectObject(dc, old);
+    DeleteObject(font);
+    DeleteObject(bitmap);
+    DeleteDC(dc);
+    if (FAILED(result)) {
+        return false;
+    }
+    result = device->CreateShaderResourceView(texture, nullptr, &g_font_view);
+    texture->Release();
+    return SUCCEEDED(result);
+}
+
+void load_background(ID3D11Device* device) {
+    wchar_t path[MAX_PATH]{};
+    GetModuleFileNameW(nullptr, path, MAX_PATH);
