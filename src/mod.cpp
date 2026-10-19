@@ -538,3 +538,8 @@ void mod_on_get_state(DWORD user, XInputState* state) {
     }
     overlay_on_pad(state);
     if (!state || !g_hooks_ready) {
+        return;
+    }
+    watch_trigger(state->gamepad.leftTrigger, g_left, g_want_melee);
+    watch_trigger(state->gamepad.rightTrigger, g_right, g_want_ranged);
+}
