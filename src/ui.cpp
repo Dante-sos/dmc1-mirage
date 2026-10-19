@@ -978,3 +978,23 @@ bool text_line(const uint8_t* pixels, int width, int height, int pitch, int y0, 
                 if (px[2] < lo) {
                     lo = px[2];
                 }
+                bool on = hi >= min_lum && hi - lo <= 28;
+                if (on) {
+                    hole = 0;
+                    if (x >= mid0 && x <= mid1) {
+                        mid_bright++;
+                    }
+                } else if (++hole > widest_hole) {
+                    widest_hole = hole;
+                }
+            }
+        }
+        int mid_span = span_px > 0 ? span_px / 3 : 1;
+        float mid_fill = static_cast<float>(mid_bright) / static_cast<float>(mid_span);
+        bool split_labels = widest_hole > width / 8;
+        bool hit = span >= min_width && span <= max_width && fill >= 0.05f && fill <= 0.48f && mid_fill >= 0.08f && !split_labels &&
+            (left + right) > width / 3 && (left + right) < width * 5 / 3;
+        if (hit) {
+            run++;
+            if (run > best) {
+                best = run;
