@@ -1278,3 +1278,23 @@ void paint(IDXGISwapChain* swap) {
     g_context->GSSetShaderResources(0, kSrvSlots, unbound);
     g_context->OMSetRenderTargets(1, &rtv, nullptr);
     static bool logged_frame = false;
+    if (!logged_frame && g_screen == Screen::Title) {
+        logged_frame = true;
+        float vx = 0, vy = 0, vw = 0, vh = 0;
+        if (saved.viewport_count > 0) {
+            vx = saved.viewports[0].TopLeftX;
+            vy = saved.viewports[0].TopLeftY;
+            vw = saved.viewports[0].Width;
+            vh = saved.viewports[0].Height;
+        }
+        log_line("title overlay buffer %u x %u viewport %.0f,%.0f %.0fx%.0f anchor %.3f", desc.Width, desc.Height, vx, vy, vw, vh, g_menu_anchor);
+    }
+    draw_screen(static_cast<float>(desc.Width), static_cast<float>(desc.Height));
+    restore_state(g_context, saved);
+    rtv->Release();
+}
+
+HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swap, UINT sync, UINT flags) {
+    paint(swap);
+    HRESULT result = g_present(swap, sync, flags);
+    if (FAILED(result) && !g_logged_present_fail) {
