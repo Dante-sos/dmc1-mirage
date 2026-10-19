@@ -28,3 +28,18 @@ def main():
     if background.exists():
         text += bytes_of("kBackground", background.read_bytes()) + "\n"
     else:
+        text += "static const unsigned char kBackground[] = {0};\nstatic const unsigned kBackgroundSize = 0;\n"
+    payload.write_text(text, encoding="ascii")
+    compiler = pathlib.Path(r"C:\Users\ajmsh\Desktop\C\TDM GCC\bin\g++.exe")
+    if not compiler.exists():
+        compiler = pathlib.Path(r"C:\Program Files (x86)\TDM GCC\bin\g++.exe")
+    command = [
+        str(compiler),
+        "-O2",
+        "-std=c++17",
+        "-static",
+        "-static-libgcc",
+        "-static-libstdc++",
+        "-mwindows",
+        "-DDMC1_EMBEDDED",
+        "-I",
