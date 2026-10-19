@@ -198,3 +198,23 @@ bool build_font(ID3D11Device* device) {
         DeleteDC(dc);
         return false;
     }
+    HGDIOBJ old = SelectObject(dc, bitmap);
+    RECT all{0, 0, kAtlas, kAtlas};
+    HBRUSH black = CreateSolidBrush(RGB(0, 0, 0));
+    FillRect(dc, &all, black);
+    DeleteObject(black);
+    SetBkMode(dc, TRANSPARENT);
+    SetTextColor(dc, RGB(255, 255, 255));
+    HFONT font = CreateFontW(-32, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH, L"Times New Roman");
+    HGDIOBJ old_font = SelectObject(dc, font);
+    for (int ch = 32; ch <= 126; ++ch) {
+        int cell = ch - 31;
+        int col = cell % kCols;
+        int row = cell / kCols;
+        RECT rect{col * kCell + 1, row * kCell, (col + 1) * kCell, (row + 1) * kCell};
+        wchar_t text[2] = {static_cast<wchar_t>(ch), 0};
+        DrawTextW(dc, text, 1, &rect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+        SIZE size{};
+        GetTextExtentPoint32W(dc, text, 1, &size);
+        int width = size.cx + 1;
+        if (width < 4) {
