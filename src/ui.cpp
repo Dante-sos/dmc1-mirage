@@ -838,3 +838,23 @@ void tick_inject() {
     g_inject_frames++;
     if (g_inject_frames < 7) {
         return;
+    }
+    g_inject_frames = 0;
+    g_inject_pos++;
+    if (g_inject_pos >= g_inject_count) {
+        g_inject_on.store(false);
+        g_capture.store(false);
+        g_screen = Screen::None;
+        return;
+    }
+    g_inject_buttons.store(g_inject_words[g_inject_pos]);
+}
+
+void activate_game_item(int game_index) {
+    WORD steps[12] = {};
+    int count = 0;
+    int delta = game_index - g_game_index;
+    WORD move = delta > 0 ? static_cast<WORD>(0x0002) : static_cast<WORD>(0x0001);
+    int taps = delta < 0 ? -delta : delta;
+    for (int i = 0; i < taps && count + 2 < 12; ++i) {
+        steps[count++] = move;
