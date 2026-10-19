@@ -858,3 +858,23 @@ void activate_game_item(int game_index) {
     int taps = delta < 0 ? -delta : delta;
     for (int i = 0; i < taps && count + 2 < 12; ++i) {
         steps[count++] = move;
+        steps[count++] = 0;
+    }
+    steps[count++] = 0x1000;
+    steps[count++] = 0;
+    g_capture.store(true);
+    start_inject(steps, count);
+}
+
+void show_title() {
+    if (g_screen == Screen::Title) {
+        return;
+    }
+    g_game_index = 0;
+    g_title_index = 0;
+    g_screen = Screen::Title;
+    g_capture.store(true);
+    g_menu_lock = 20;
+    g_title_miss = 0;
+    g_title_hits = 0;
+    g_prev_buttons = g_buttons.load();
