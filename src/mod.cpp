@@ -268,3 +268,21 @@ void place_mission_spawn(int mission) {
         const float y = pos[1];
         const float z = pos[2];
         const float facing = pos[3];
+        for (uintptr_t offset : {uintptr_t{0x1AC0}, uintptr_t{0x1E0}, uintptr_t{0x170}}) {
+            write_f32(body + offset, x);
+        }
+        for (uintptr_t offset : {uintptr_t{0x1AC4}, uintptr_t{0x1E4}, uintptr_t{0x174}}) {
+            write_f32(body + offset, y);
+        }
+        for (uintptr_t offset : {uintptr_t{0x1AC8}, uintptr_t{0x1E8}, uintptr_t{0x178}}) {
+            write_f32(body + offset, z);
+        }
+        write_f32(body + 0x124, facing);
+    }
+    log_line("mission spawn stage %u room %u", stage, room);
+}
+
+extern "C" void apply_pending_at_start() {
+    int mission = 0;
+    int mode = 0;
+    if (!claim_pending(mission, mode)) {
