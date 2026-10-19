@@ -1438,3 +1438,11 @@ void overlay_on_pad(XInputState* state) {
     }
 }
 
+void overlay_install() {
+    start_keyboard_hook();
+    if (!hook_import("d3d11.dll", "D3D11CreateDeviceAndSwapChain", reinterpret_cast<void*>(create_hook), reinterpret_cast<void**>(&g_create))) {
+        log_line("could not hook D3D11CreateDeviceAndSwapChain");
+        return;
+    }
+    log_line("swap chain create hooked");
+}
