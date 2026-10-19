@@ -1178,3 +1178,23 @@ void update_menu_input() {
     }
 }
 
+void queue_probe(ID3D11Texture2D* back, const D3D11_TEXTURE2D_DESC& desc) {
+    if (desc.SampleDesc.Count != 1 || desc.Width < 64 || desc.Height < 64) {
+        return;
+    }
+    D3D11_BOX box{};
+    box.left = desc.Width * 25 / 100;
+    box.right = desc.Width * 75 / 100;
+    box.top = desc.Height * 14 / 100;
+    box.bottom = desc.Height * 98 / 100;
+    box.back = 1;
+    UINT width = box.right - box.left;
+    UINT height = box.bottom - box.top;
+    if (!g_probe || g_probe_w != static_cast<int>(width) || g_probe_h != static_cast<int>(height)) {
+        if (g_probe) {
+            g_probe->Release();
+            g_probe = nullptr;
+        }
+        D3D11_TEXTURE2D_DESC stage = desc;
+        stage.Width = width;
+        stage.Height = height;
