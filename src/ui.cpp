@@ -918,3 +918,23 @@ float average_lum(const uint8_t* pixels, int width, int height, int pitch, int y
             count++;
         }
     }
+    if (count == 0) {
+        return 255.0f;
+    }
+    return static_cast<float>(sum) / static_cast<float>(count);
+}
+
+bool text_line(const uint8_t* pixels, int width, int height, int pitch, int y0, int y1, int min_lum, float min_width, float max_width) {
+    if (y0 < 0) {
+        y0 = 0;
+    }
+    if (y1 > height) {
+        y1 = height;
+    }
+    if (y1 - y0 < 4) {
+        return false;
+    }
+    int run = 0;
+    int best = 0;
+    for (int y = y0; y < y1; ++y) {
+        const uint8_t* row = pixels + y * pitch;
