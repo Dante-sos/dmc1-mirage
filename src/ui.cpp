@@ -1358,3 +1358,23 @@ bool hook_import(const char* dll_name, const char* function_name, void* detour, 
         if (_stricmp(name, dll_name) != 0) {
             continue;
         }
+        auto* thunk = reinterpret_cast<IMAGE_THUNK_DATA*>(base + import_desc->FirstThunk);
+        auto* original_thunk = reinterpret_cast<IMAGE_THUNK_DATA*>(base + (import_desc->OriginalFirstThunk ? import_desc->OriginalFirstThunk : import_desc->FirstThunk));
+        for (; original_thunk->u1.AddressOfData; ++original_thunk, ++thunk) {
+            if (IMAGE_SNAP_BY_ORDINAL(original_thunk->u1.Ordinal)) {
+                continue;
+            }
+            auto* entry = reinterpret_cast<IMAGE_IMPORT_BY_NAME*>(base + original_thunk->u1.AddressOfData);
+            if (std::strcmp(entry->Name, function_name) != 0) {
+                continue;
+            }
+            DWORD old = 0;
+            VirtualProtect(&thunk->u1.Function, sizeof(void*), PAGE_EXECUTE_READWRITE, &old);
+            *original = reinterpret_cast<void*>(thunk->u1.Function);
+            thunk->u1.Function = reinterpret_cast<ULONG_PTR>(detour);
+            VirtualProtect(&thunk->u1.Function, sizeof(void*), old, &old);
+            return true;
+        }
+    }
+    return false;
+}
