@@ -798,3 +798,23 @@ void draw_screen(float width, float height) {
 void move_mission(int delta) {
     g_mission += delta;
     if (g_mission < 0) {
+        g_mission = 0;
+    }
+    if (g_mission >= kMissionCount) {
+        g_mission = kMissionCount - 1;
+    }
+}
+
+void move_mode(int delta) {
+    g_mode += delta;
+    if (g_mode < 0) {
+        g_mode = 0;
+    }
+    if (g_mode > 3) {
+        g_mode = 3;
+    }
+}
+
+void start_inject(const WORD* words, int count) {
+    if (count > 12) {
+        count = 12;
