@@ -1238,3 +1238,23 @@ void paint(IDXGISwapChain* swap) {
         return;
     }
     if (device != g_device && !init_renderer(device)) {
+        device->Release();
+        return;
+    }
+    device->Release();
+    if (!g_ready || !g_context) {
+        return;
+    }
+    tick_inject();
+    if (g_probe_cooldown > 0) {
+        g_probe_cooldown--;
+    }
+    consume_probe();
+    update_menu_input();
+    ID3D11Texture2D* back = nullptr;
+    if (FAILED(swap->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&back)))) {
+        return;
+    }
+    D3D11_TEXTURE2D_DESC desc{};
+    back->GetDesc(&desc);
+    if (!g_inject_on.load() && g_probe_cooldown == 0 && !g_probe_pending) {
