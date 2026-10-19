@@ -58,3 +58,9 @@ BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID) {
     }
     DisableThreadLibraryCalls(instance);
     load_real();
+    if (process_is_dmc1()) {
+        g_dmc1 = true;
+        mod_start();
+    }
+    return TRUE;
+}
