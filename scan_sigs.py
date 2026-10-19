@@ -78,3 +78,19 @@ def hits(pat, limit=12):
 
 
 for name, pat in patterns.items():
+    if name == "mov_rdx_then_rcx":
+        continue
+    print(name, [hex(h) for h in hits(pat)])
+
+print("--- old function sites ---")
+for rva in (0x2C99C0, 0x2C4A00, 0x2C4C50, 0x3C8DC0, 0x2F0610, 0x2ED3A0, 0x255BAE, 0x3F9D22, 0x251839):
+    off = r2o(rva)
+    print(hex(rva), data[off : off + 24].hex(" "))
+
+# Find mov rdx,[rip]; mov rcx,[rip] near taunt state
+taunts = hits(bytes.fromhex("48 C7 01 01 42 00 00"))
+print("taunt contexts")
+for rva in taunts:
+    i = rva - va
+    window = blob[max(0, i - 80) : i + 16]
+    print(hex(rva), window.hex(" "))
