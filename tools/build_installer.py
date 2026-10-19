@@ -41,6 +41,7 @@ def main():
         "-static-libgcc",
         "-static-libstdc++",
         "-mwindows",
+        "-municode",
         "-DDMC1_EMBEDDED",
         "-I",
         str(root),
