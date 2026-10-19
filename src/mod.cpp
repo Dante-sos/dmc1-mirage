@@ -376,3 +376,21 @@ void switch_ranged() {
     auto weapon_fn = reinterpret_cast<RangedFn>(g_base + kUpdateRangedRva);
     weapon_fn(next);
 }
+
+void keep_chosen_mission() {
+    int mission = g_pending_mission.load();
+    if (mission < 1 || !g_mission_staged.load()) {
+        return;
+    }
+    uint8_t* data = session();
+    if (data && data[kMissionOffset] != static_cast<uint8_t>(mission) && g_mission_restores < 5) {
+        int mode = g_pending_mode.load();
+        uint8_t previous = 0;
+        write_mission_choice(mission, mode, previous);
+        if (data) {
+            uint32_t flags = 0;
+            std::memcpy(&flags, data + kEventOffset, sizeof(flags));
+            flags |= 0x800;
+            std::memcpy(data + kEventOffset, &flags, sizeof(flags));
+        }
+        place_mission_spawn(mission);
