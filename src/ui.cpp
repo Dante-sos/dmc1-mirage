@@ -938,3 +938,23 @@ bool text_line(const uint8_t* pixels, int width, int height, int pitch, int y0, 
     int best = 0;
     for (int y = y0; y < y1; ++y) {
         const uint8_t* row = pixels + y * pitch;
+        int left = width;
+        int right = -1;
+        int bright = 0;
+        for (int x = 0; x < width; ++x) {
+            const uint8_t* px = row + x * 4;
+            int hi = pixel_lum(px);
+            int lo = px[0];
+            if (px[1] < lo) {
+                lo = px[1];
+            }
+            if (px[2] < lo) {
+                lo = px[2];
+            }
+            if (hi >= min_lum && hi - lo <= 28) {
+                bright++;
+                if (x < left) {
+                    left = x;
+                }
+                right = x;
+            }
