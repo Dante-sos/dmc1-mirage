@@ -58,3 +58,23 @@ void log_line(const char* fmt, ...) {
     wcscpy(slash + 1, L"dmc1-switch.log");
     FILE* file = _wfopen(path, L"a");
     if (!file) {
+        return;
+    }
+    va_list args;
+    va_start(args, fmt);
+    std::vfprintf(file, fmt, args);
+    va_end(args);
+    std::fputc('\n', file);
+    std::fclose(file);
+}
+
+struct Vertex {
+    float x, y, u, v, r, g, b, a;
+};
+
+std::atomic<WORD> g_buttons{0};
+int g_mission = 0;
+int g_mode = 1;
+int g_glyph_w[95] = {};
+
+enum class Screen { None, Title, Missions };
