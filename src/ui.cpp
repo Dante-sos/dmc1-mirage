@@ -338,3 +338,23 @@ void load_background(ID3D11Device* device) {
     HRESULT result = device->CreateTexture2D(&desc, &sub, &texture);
     if (FAILED(result)) {
         log_line("mission background texture failed");
+        return;
+    }
+    result = device->CreateShaderResourceView(texture, nullptr, &g_bg_view);
+    texture->Release();
+    if (SUCCEEDED(result)) {
+        log_line("mission background ready %dx%d", g_bg_w, g_bg_h);
+    }
+}
+
+bool init_renderer(ID3D11Device* device) {
+    release_renderer();
+    g_device = device;
+    g_device->AddRef();
+    device->GetImmediateContext(&g_context);
+    const char* source = R"(
+cbuffer Screen : register(b0) { float2 screen; float texMode; float pad; };
+struct Vin { float2 pos : POSITION; float2 uv : TEXCOORD; float4 col : COLOR; };
+struct Vout { float4 pos : SV_POSITION; float2 uv : TEXCOORD; float4 col : COLOR; };
+Vout vs_main(Vin i) {
+    Vout o;
