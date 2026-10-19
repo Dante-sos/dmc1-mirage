@@ -638,3 +638,23 @@ void submit(std::vector<Vertex>& verts, float width, float height, float tex_mod
     std::memcpy(mapped.pData, verts.data(), verts.size() * sizeof(Vertex));
     g_context->Unmap(g_vb, 0);
     if (FAILED(g_context->Map(g_cb, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
+        verts.clear();
+        return;
+    }
+    float screen[4] = {width, height, tex_mode, 0};
+    std::memcpy(mapped.pData, screen, sizeof(screen));
+    g_context->Unmap(g_cb, 0);
+    UINT stride = sizeof(Vertex);
+    UINT offset = 0;
+    g_context->IASetInputLayout(g_layout);
+    g_context->IASetVertexBuffers(0, 1, &g_vb, &stride, &offset);
+    g_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    g_context->VSSetShader(g_vs, nullptr, 0);
+    g_context->VSSetConstantBuffers(0, 1, &g_cb);
+    g_context->PSSetShader(g_ps, nullptr, 0);
+    g_context->PSSetShaderResources(0, 1, &texture);
+    g_context->PSSetSamplers(0, 1, &g_sampler);
+    float blend_factor[4] = {0, 0, 0, 0};
+    g_context->OMSetBlendState(g_blend, blend_factor, 0xFFFFFFFF);
+    g_context->OMSetDepthStencilState(g_depth, 0);
+    g_context->RSSetState(g_raster);
