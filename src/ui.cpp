@@ -1098,3 +1098,23 @@ bool edge_key(int index, int vk) {
     bool pressed = down && !g_key_down[index];
     g_key_down[index] = down;
     return pressed;
+}
+
+void update_menu_input() {
+    WORD buttons = g_buttons.load();
+    WORD pressed = buttons & ~g_prev_buttons;
+    g_prev_buttons = buttons;
+    bool up = (pressed & 0x0001) || edge_key(0, VK_UP);
+    bool down = (pressed & 0x0002) || edge_key(1, VK_DOWN);
+    bool left = (pressed & 0x0004) || edge_key(2, VK_LEFT);
+    bool right = (pressed & 0x0008) || edge_key(3, VK_RIGHT);
+    bool confirm = (pressed & 0x1000) || edge_key(4, VK_RETURN);
+    bool close = (pressed & 0x2000) || edge_key(5, VK_ESCAPE);
+    bool reopen = edge_key(6, VK_F7);
+    if (g_inject_on.load()) {
+        return;
+    }
+    if (reopen) {
+        g_screen = Screen::Missions;
+        g_capture.store(true);
+        return;
