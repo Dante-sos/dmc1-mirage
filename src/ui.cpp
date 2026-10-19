@@ -238,3 +238,23 @@ bool build_font(ID3D11Device* device) {
         if (x < 8 && y < 8) {
             continue;
         }
+        uint8_t* px = pixels + i * 4;
+        uint8_t lum = px[0] > px[1] ? px[0] : px[1];
+        if (px[2] > lum) {
+            lum = px[2];
+        }
+        px[0] = 255;
+        px[1] = 255;
+        px[2] = 255;
+        px[3] = lum;
+    }
+    D3D11_TEXTURE2D_DESC desc{};
+    desc.Width = kAtlas;
+    desc.Height = kAtlas;
+    desc.MipLevels = 1;
+    desc.ArraySize = 1;
+    desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    desc.SampleDesc.Count = 1;
+    desc.Usage = D3D11_USAGE_IMMUTABLE;
+    desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    D3D11_SUBRESOURCE_DATA data{};
