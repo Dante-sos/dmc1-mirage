@@ -1298,3 +1298,23 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swap, UINT sync, UINT fla
     paint(swap);
     HRESULT result = g_present(swap, sync, flags);
     if (FAILED(result) && !g_logged_present_fail) {
+        g_logged_present_fail = true;
+        log_line("Present failed 0x%08lX", static_cast<unsigned long>(result));
+        if (g_device) {
+            log_line("device removed reason 0x%08lX", static_cast<unsigned long>(g_device->GetDeviceRemovedReason()));
+        }
+    }
+    return result;
+}
+
+HRESULT STDMETHODCALLTYPE resize_hook(IDXGISwapChain* swap, UINT count, UINT width, UINT height, DXGI_FORMAT format, UINT flags) {
+    log_line("swapchain resize %ux%u", width, height);
+    HRESULT result = g_resize(swap, count, width, height, format, flags);
+    if (FAILED(result)) {
+        log_line("swapchain resize failed 0x%08lX", static_cast<unsigned long>(result));
+    }
+    return result;
+}
+
+void hook_swap_chain(IDXGISwapChain* swap) {
+    if (!swap || g_present) {
