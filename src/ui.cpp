@@ -498,3 +498,23 @@ void restore_state(ID3D11DeviceContext* context, DxState& state) {
     context->IASetIndexBuffer(state.ib, state.ib_format, state.ib_offset);
     context->VSSetShader(state.vs, nullptr, 0);
     context->VSSetConstantBuffers(0, 1, &state.vs_cb);
+    context->VSSetShaderResources(0, kSrvSlots, state.vs_srvs);
+    context->PSSetShader(state.ps, nullptr, 0);
+    context->PSSetConstantBuffers(0, 1, &state.ps_cb);
+    context->PSSetShaderResources(0, kSrvSlots, state.ps_srvs);
+    context->PSSetSamplers(0, kSrvSlots, state.ps_samplers);
+    context->GSSetShader(state.gs, nullptr, 0);
+    context->GSSetShaderResources(0, kSrvSlots, state.gs_srvs);
+    context->OMSetBlendState(state.blend, state.blend_factor, state.sample_mask);
+    context->OMSetDepthStencilState(state.depth, state.stencil_ref);
+    context->RSSetState(state.raster);
+    context->RSSetViewports(state.viewport_count, state.viewports);
+    context->RSSetScissorRects(state.scissor_count, state.scissors);
+    auto drop = [](auto*& object) {
+        if (object) {
+            object->Release();
+            object = nullptr;
+        }
+    };
+    drop(state.layout);
+    drop(state.vb);
