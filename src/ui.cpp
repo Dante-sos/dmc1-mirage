@@ -278,3 +278,23 @@ bool build_font(ID3D11Device* device) {
 void load_background(ID3D11Device* device) {
     wchar_t path[MAX_PATH]{};
     GetModuleFileNameW(nullptr, path, MAX_PATH);
+    wchar_t* slash = wcsrchr(path, L'\\');
+    if (!slash) {
+        return;
+    }
+    wcscpy(slash + 1, L"dmc1-mission-bg.jpg");
+    struct GdiSession {
+        ULONG_PTR token = 0;
+        ~GdiSession() {
+            if (token) {
+                Gdiplus::GdiplusShutdown(token);
+            }
+        }
+    } session;
+    Gdiplus::GdiplusStartupInput input;
+    if (Gdiplus::GdiplusStartup(&session.token, &input, nullptr) != Gdiplus::Ok) {
+        session.token = 0;
+        return;
+    }
+    Gdiplus::Bitmap bitmap(path);
+    if (bitmap.GetLastStatus() != Gdiplus::Ok || bitmap.GetWidth() == 0) {
