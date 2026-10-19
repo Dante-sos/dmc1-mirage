@@ -412,3 +412,21 @@ extern "C" void apply_weapon_requests() {
         return;
     }
     if (g_want_melee.exchange(false)) {
+        switch_melee();
+    }
+    if (g_want_ranged.exchange(false)) {
+        switch_ranged();
+    }
+}
+
+void watch_trigger(BYTE& trigger, TriggerWatch& watch, std::atomic<bool>& request) {
+    bool pressed = trigger >= static_cast<BYTE>(g_trigger_threshold);
+    DWORD now = GetTickCount();
+    if (pressed) {
+        if (!watch.down) {
+            watch.down = true;
+            watch.tick = now;
+            watch.passed = false;
+        }
+        if (!watch.passed && static_cast<int>(now - watch.tick) >= g_tap_ms) {
+            watch.passed = true;
