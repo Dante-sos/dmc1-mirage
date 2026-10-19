@@ -62,3 +62,19 @@ void collect_paths(const std::string& text, std::vector<std::wstring>& out) {
     const std::string key = "\"path\"";
     size_t at = 0;
     while ((at = text.find(key, at)) != std::string::npos) {
+        at = text.find('"', at + key.size());
+        if (at == std::string::npos) {
+            break;
+        }
+        size_t end = text.find('"', at + 1);
+        if (end == std::string::npos) {
+            break;
+        }
+        std::string raw = text.substr(at + 1, end - at - 1);
+        std::wstring wide;
+        wide.reserve(raw.size());
+        for (size_t i = 0; i < raw.size(); ++i) {
+            if (raw[i] == '\\' && i + 1 < raw.size() && raw[i + 1] == '\\') {
+                wide.push_back(L'\\');
+                ++i;
+            } else {
