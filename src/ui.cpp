@@ -618,3 +618,23 @@ void submit(std::vector<Vertex>& verts, float width, float height, float tex_mod
         if (g_vb) {
             g_vb->Release();
             g_vb = nullptr;
+        }
+        D3D11_BUFFER_DESC desc{};
+        desc.ByteWidth = static_cast<UINT>(verts.size() * sizeof(Vertex) * 2);
+        desc.Usage = D3D11_USAGE_DYNAMIC;
+        desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+        desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+        if (FAILED(g_device->CreateBuffer(&desc, nullptr, &g_vb))) {
+            verts.clear();
+            return;
+        }
+        g_vb_capacity = verts.size() * 2;
+    }
+    D3D11_MAPPED_SUBRESOURCE mapped{};
+    if (FAILED(g_context->Map(g_vb, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
+        verts.clear();
+        return;
+    }
+    std::memcpy(mapped.pData, verts.data(), verts.size() * sizeof(Vertex));
+    g_context->Unmap(g_vb, 0);
+    if (FAILED(g_context->Map(g_cb, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
