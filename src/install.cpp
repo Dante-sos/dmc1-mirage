@@ -46,3 +46,19 @@ std::wstring reg_string(HKEY root, const wchar_t* subkey, const wchar_t* value) 
 
 std::string read_file(const std::wstring& path) {
     HANDLE file = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (file == INVALID_HANDLE_VALUE) {
+        return {};
+    }
+    DWORD size = GetFileSize(file, nullptr);
+    std::string text(size, '\0');
+    DWORD read = 0;
+    ReadFile(file, text.data(), size, &read, nullptr);
+    CloseHandle(file);
+    text.resize(read);
+    return text;
+}
+
+void collect_paths(const std::string& text, std::vector<std::wstring>& out) {
+    const std::string key = "\"path\"";
+    size_t at = 0;
+    while ((at = text.find(key, at)) != std::string::npos) {
