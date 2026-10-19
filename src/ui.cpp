@@ -158,3 +158,23 @@ void release_renderer() {
 }
 
 bool compile_shader(const char* source, const char* entry, const char* target, ID3DBlob** blob) {
+    HMODULE compiler = LoadLibraryW(L"d3dcompiler_47.dll");
+    if (!compiler) {
+        log_line("d3dcompiler_47.dll missing");
+        return false;
+    }
+    using CompileFn = HRESULT(WINAPI*)(LPCVOID, SIZE_T, LPCSTR, const D3D_SHADER_MACRO*, ID3DInclude*, LPCSTR, LPCSTR, UINT, UINT, ID3DBlob**, ID3DBlob**);
+    auto compile = reinterpret_cast<CompileFn>(GetProcAddress(compiler, "D3DCompile"));
+    if (!compile) {
+        return false;
+    }
+    ID3DBlob* errors = nullptr;
+    HRESULT result = compile(source, std::strlen(source), nullptr, nullptr, nullptr, entry, target, D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, blob, &errors);
+    if (FAILED(result)) {
+        if (errors) {
+            log_line("shader: %s", static_cast<const char*>(errors->GetBufferPointer()));
+            errors->Release();
+        }
+        return false;
+    }
+    if (errors) {
