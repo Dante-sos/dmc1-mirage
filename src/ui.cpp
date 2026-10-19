@@ -1398,3 +1398,23 @@ LRESULT CALLBACK keyboard_hook(int code, WPARAM wp, LPARAM lp) {
 }
 
 DWORD WINAPI keyboard_thread(void*) {
+    HMODULE module = nullptr;
+    GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, reinterpret_cast<LPCWSTR>(keyboard_hook), &module);
+    g_key_hook = SetWindowsHookExW(WH_KEYBOARD_LL, keyboard_hook, module, 0);
+    if (!g_key_hook) {
+        log_line("keyboard hook failed");
+    }
+    MSG msg;
+    while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
+        TranslateMessage(&msg);
+        DispatchMessageW(&msg);
+    }
+    return 0;
+}
+
+void start_keyboard_hook() {
+    static bool started = false;
+    if (started) {
+        return;
+    }
+    started = true;
