@@ -246,8 +246,23 @@ void trickster_execute_action() {
     // dot < -0.35: Input is in the direction OPPOSITE to Dante's facing (BACKWARD relative to Dante)
     float dot = has_direction ? (in_x * f_dx + in_z * f_dz) : 0.0f;
 
-    // 1. Warp Dash (Forward Warp / Air Trick) -> Forward relative to Dante's facing + Style
-    if (has_direction && dot > 0.35f) {
+    // Check if Lock-on is active (RB on Gamepad, or Shift / Space on Keyboard)
+    bool lock_on = false;
+    if (g_has_buffered_pad) {
+        WORD buttons = g_buffered_pad_state.gamepad.buttons;
+        lock_on = (buttons & 0x0200) != 0; // RB in XInput is 0x0200 (Right Shoulder)
+    }
+
+
+    if ((GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0 ||
+        (GetAsyncKeyState(VK_LSHIFT) & 0x8000) != 0 ||
+        (GetAsyncKeyState(VK_RSHIFT) & 0x8000) != 0 ||
+        (GetAsyncKeyState(VK_SPACE) & 0x8000) != 0) {
+        lock_on = true;
+    }
+
+    // 1. Warp Dash (Forward Warp / Air Trick) -> ONLY with Lock-on + Forward relative to Dante
+    if (lock_on && has_direction && dot > 0.60f) {
         uint8_t* enemy = find_target_enemy(body);
         if (enemy) {
             float ex = read_f32(enemy + kPosBaseRva);
@@ -284,8 +299,8 @@ void trickster_execute_action() {
         return;
     }
 
-    // 2. Backdash (Retreat Warp / Trick Down) -> Opposite to Dante's facing + Style
-    if (has_direction && dot < -0.35f) {
+    // 2. Backdash (Retreat Warp / Trick Down) -> ONLY with Lock-on + Backward relative to Dante
+    if (lock_on && has_direction && dot < -0.60f) {
         float warp_dist = 450.0f;
         float target_x = cur_x - f_dx * warp_dist;
         float target_z = cur_z - f_dz * warp_dist;
@@ -298,24 +313,24 @@ void trickster_execute_action() {
         return;
     }
 
-    // 3. Ground Dash -> Neutral Style OR Strafe/Side Dash in input direction
+    // 3. Normal Ground Dash -> Whenever Lock-on is NOT held, OR neutral, OR strafe/side direction!
     g_dash_timer = kDashFrames;
     g_iframe_timer = kDashFrames + 2;
     g_cooldown = kDashCooldownFrames;
 
     if (has_direction) {
-        // Dash in the direction pressed (e.g. strafe dash)
+        // Dash in the direction pressed (moving left, right, forward, backward, or strafe)
         g_dash_dx = in_x;
         g_dash_dz = in_z;
         write_f32(body + kFacingRva, std::atan2(in_x, in_z));
     } else {
-        // Neutral dash forward
+        // Neutral dash forward in current facing
         g_dash_dx = f_dx;
         g_dash_dz = f_dz;
     }
 
     g_active_action_name = "DASH";
-    mod_log("trickster: Dash started dx=%.2f dz=%.2f facing=%.2f", g_dash_dx, g_dash_dz, read_f32(body + kFacingRva));
+    mod_log("trickster: Dash started dx=%.2f dz=%.2f facing=%.2f lock_on=%d", g_dash_dx, g_dash_dz, read_f32(body + kFacingRva), lock_on ? 1 : 0);
 }
 
 }  // namespace
