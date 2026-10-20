@@ -134,7 +134,7 @@ void style_set(StyleType type) {
 
 bool style_in_action() {
     if (g_active_style == StyleType::Trickster) {
-        return trickster_is_dashing() || trickster_is_invulnerable();
+        return trickster_is_dashing();
     }
     return false;
 }

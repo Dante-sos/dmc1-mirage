@@ -18,8 +18,30 @@ constexpr uintptr_t kEnemyTargetRva = 0x1C18;
 constexpr uintptr_t kEnemyCountRva = 0x4CB6BA0;
 constexpr uintptr_t kEnemyArrayRva = 0x4CB6BB0;
 constexpr uintptr_t kShootTimerRva = 0x1C05;
+constexpr uintptr_t kMotionActiveRva = 0x1A54;
+constexpr uintptr_t kMotionPrevRva = 0x1A50;
+constexpr uintptr_t kAnimStructRva = 0x460;
+constexpr uintptr_t kAnimTimerOffset = 0x110;
 
-constexpr int kDashFrames = 10;
+constexpr uintptr_t kPlayMotionRva = 0x3C3250;
+constexpr uintptr_t kPlayEffectRva = 0x81D20;
+
+// Dante motion IDs in DMC1
+constexpr uint32_t kMotionWalk = 0x500;
+constexpr uint32_t kMotionRun = 0x501;
+constexpr uint32_t kMotionDash = 0x507;
+constexpr uint32_t kMotionBackstep = 0x518;
+constexpr uint32_t kMotionLanding = 0x50C;
+constexpr uint32_t kMotionStinger = 0x523;
+
+// Game audio/particle effect IDs
+constexpr uint32_t kEffectDashWhoosh = 0x460000;
+constexpr uint32_t kEffectBackdashWhoosh = 0x450000;
+
+using PlayMotionFn = void(__fastcall*)(uint32_t motion_id, void* target_pos, float speed, void* extra);
+using PlayEffectFn = void(__fastcall*)(uint32_t effect_id, void* p1, void* pos, uint64_t flags);
+
+constexpr int kDashFrames = 16;
 constexpr int kDashCooldownFrames = 0;
 constexpr int kWarpCooldownFrames = 6;
 constexpr int kActionBufferFrames = 8;
@@ -46,6 +68,33 @@ inline float read_f32(const uint8_t* address) {
 
 inline void write_f32(uint8_t* address, float val) {
     std::memcpy(address, &val, sizeof(val));
+}
+
+void play_actor_motion(uint8_t* body, uint32_t motion_id) {
+    uintptr_t base = mod_base();
+    if (!base || !body) {
+        return;
+    }
+
+    *reinterpret_cast<uint32_t*>(body + kMotionPrevRva) = motion_id;
+    *reinterpret_cast<uint32_t*>(body + kMotionActiveRva) = motion_id;
+
+    auto** anim_ptr = reinterpret_cast<uint8_t**>(body + kAnimStructRva);
+    if (anim_ptr && *anim_ptr) {
+        *reinterpret_cast<float*>(*anim_ptr + kAnimTimerOffset) = 0.0f;
+    }
+
+    auto play_fn = reinterpret_cast<PlayMotionFn>(base + kPlayMotionRva);
+    play_fn(motion_id, body + kPosVisualRva, 20000.0f, nullptr);
+}
+
+void play_actor_effect(uint8_t* body, uint32_t effect_id) {
+    uintptr_t base = mod_base();
+    if (!base || !body) {
+        return;
+    }
+    auto effect_fn = reinterpret_cast<PlayEffectFn>(base + kPlayEffectRva);
+    effect_fn(effect_id, nullptr, body + kPosVisualRva, 0x100000000ULL);
 }
 
 void write_coords(uint8_t* body, float x, float y, float z) {
@@ -160,16 +209,21 @@ uint8_t* find_target_enemy(uint8_t* body) {
 }
 
 float get_dash_speed(int step) {
-    // 10 frame burst: 48 -> 36 -> 22 units/frame (total ~354 units).
-    // Fast, responsive, stylish dash that bursts noticeably ahead of running speed,
-    // while reliably staying safely under capsule radius (64 units) per frame.
+    // 16 frame dynamic momentum curve (total 628 units):
+    // Frames 1-3:   58.0f (explosive launch: 174 units)
+    // Frames 4-8:   46.0f (high-speed sustained glide: 230 units)
+    // Frames 9-13:  34.0f (smooth deceleration: 170 units)
+    // Frames 14-16: 18.0f (seamless landing recovery: 54 units)
     if (step <= 3) {
-        return 48.0f;
+        return 58.0f;
     }
-    if (step <= 7) {
-        return 36.0f;
+    if (step <= 8) {
+        return 46.0f;
     }
-    return 22.0f;
+    if (step <= 13) {
+        return 34.0f;
+    }
+    return 18.0f;
 }
 
 void trickster_execute_action() {
@@ -278,6 +332,8 @@ void trickster_execute_action() {
 
                 write_coords(body, target_x, ey, target_z);
                 write_f32(body + kFacingRva, std::atan2(edx, edz));
+                play_actor_motion(body, kMotionDash);
+                play_actor_effect(body, kEffectDashWhoosh);
                 g_iframe_timer = 12;
                 g_cooldown = kWarpCooldownFrames;
                 g_active_action_name = "WARP DASH";
@@ -292,6 +348,8 @@ void trickster_execute_action() {
         float target_z = cur_z + f_dz * warp_dist;
 
         write_coords(body, target_x, cur_y, target_z);
+        play_actor_motion(body, kMotionDash);
+        play_actor_effect(body, kEffectDashWhoosh);
         g_iframe_timer = 10;
         g_cooldown = kWarpCooldownFrames;
         g_active_action_name = "WARP DASH";
@@ -301,11 +359,13 @@ void trickster_execute_action() {
 
     // 2. Backdash (Retreat Warp / Trick Down) -> ONLY with Lock-on + Backward relative to Dante
     if (lock_on && has_direction && dot < -0.60f) {
-        float warp_dist = 450.0f;
+        float warp_dist = 560.0f;
         float target_x = cur_x - f_dx * warp_dist;
         float target_z = cur_z - f_dz * warp_dist;
 
         write_coords(body, target_x, cur_y, target_z);
+        play_actor_motion(body, kMotionBackstep);
+        play_actor_effect(body, kEffectBackdashWhoosh);
         g_iframe_timer = 12;
         g_cooldown = kWarpCooldownFrames;
         g_active_action_name = "BACKDASH";
@@ -315,7 +375,7 @@ void trickster_execute_action() {
 
     // 3. Normal Ground Dash -> Whenever Lock-on is NOT held, OR neutral, OR strafe/side direction!
     g_dash_timer = kDashFrames;
-    g_iframe_timer = kDashFrames + 2;
+    g_iframe_timer = kDashFrames;
     g_cooldown = kDashCooldownFrames;
 
     if (has_direction) {
@@ -328,6 +388,9 @@ void trickster_execute_action() {
         g_dash_dx = f_dx;
         g_dash_dz = f_dz;
     }
+
+    play_actor_motion(body, kMotionDash);
+    play_actor_effect(body, kEffectDashWhoosh);
 
     g_active_action_name = "DASH";
     mod_log("trickster: Dash started dx=%.2f dz=%.2f facing=%.2f dot=%.2f lock_on=%d", g_dash_dx, g_dash_dz, read_f32(body + kFacingRva), dot, lock_on ? 1 : 0);
@@ -422,6 +485,29 @@ void trickster_update() {
         write_horizontal_coords(body, next_x, next_z);
 
         g_dash_timer--;
+        if (g_dash_timer == 0) {
+            // Dash completed: seamlessly transition into Run or Idle/Landing
+            bool input_held = false;
+            if ((GetAsyncKeyState('W') & 0x8000) != 0 || (GetAsyncKeyState('S') & 0x8000) != 0 ||
+                (GetAsyncKeyState('A') & 0x8000) != 0 || (GetAsyncKeyState('D') & 0x8000) != 0 ||
+                (GetAsyncKeyState(VK_UP) & 0x8000) != 0 || (GetAsyncKeyState(VK_DOWN) & 0x8000) != 0 ||
+                (GetAsyncKeyState(VK_LEFT) & 0x8000) != 0 || (GetAsyncKeyState(VK_RIGHT) & 0x8000) != 0) {
+                input_held = true;
+            }
+            if (g_has_buffered_pad) {
+                SHORT sx = g_buffered_pad_state.gamepad.leftX;
+                SHORT sy = g_buffered_pad_state.gamepad.leftY;
+                if (std::abs(sx) > 7000 || std::abs(sy) > 7000) {
+                    input_held = true;
+                }
+            }
+
+            if (input_held) {
+                play_actor_motion(body, kMotionRun);
+            } else {
+                play_actor_motion(body, kMotionLanding);
+            }
+        }
     }
 
     // Invulnerability Protection (i-frames)
