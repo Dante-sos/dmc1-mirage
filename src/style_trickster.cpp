@@ -35,8 +35,14 @@ constexpr uint32_t kMotionLanding = 0x50C;
 constexpr uint32_t kMotionStinger = 0x523;
 
 // Game audio/particle effect IDs
-constexpr uint32_t kEffectDashWhoosh = 0x460000;
-constexpr uint32_t kEffectBackdashWhoosh = 0x450000;
+constexpr uintptr_t kMotionTrailRva = 0x56383B;
+constexpr uint32_t kEffectDashWhoosh = 0x00440000;
+constexpr uint32_t kEffectGroundDust = 0x00030000;
+constexpr uint32_t kEffectSparkStreak = 0x00580021;
+constexpr uint32_t kEffectLightningSparks = 0x00580023;
+constexpr uint32_t kEffectMagicCircle = 0x00170000;
+constexpr uint32_t kEffectTeleportRing = 0x01040001;
+constexpr uint32_t kEffectTeleportFlash = 0x01040002;
 
 using PlayMotionFn = void(__fastcall*)(uint32_t motion_id, void* target_pos, float speed, void* extra);
 using PlayEffectFn = void(__fastcall*)(uint32_t effect_id, void* p1, void* pos, uint64_t flags);
@@ -88,13 +94,14 @@ void play_actor_motion(uint8_t* body, uint32_t motion_id) {
     play_fn(motion_id, body + kPosVisualRva, 20000.0f, nullptr);
 }
 
-void play_actor_effect(uint8_t* body, uint32_t effect_id) {
+void play_effect_at(float x, float y, float z, uint32_t effect_id) {
     uintptr_t base = mod_base();
-    if (!base || !body) {
+    if (!base) {
         return;
     }
+    float pos[4] = {x, y, z, 0.0f};
     auto effect_fn = reinterpret_cast<PlayEffectFn>(base + kPlayEffectRva);
-    effect_fn(effect_id, nullptr, body + kPosVisualRva, 0x100000000ULL);
+    effect_fn(effect_id, nullptr, pos, 0x100000000ULL);
 }
 
 void write_coords(uint8_t* body, float x, float y, float z) {
@@ -330,10 +337,23 @@ void trickster_execute_action() {
                 float target_x = cur_x + (edx / edist) * stop_dist;
                 float target_z = cur_z + (edz / edist) * stop_dist;
 
+                // 1. Departure magic glyph and teleport ring at origin
+                play_effect_at(cur_x, cur_y, cur_z, kEffectMagicCircle);
+                play_effect_at(cur_x, cur_y, cur_z, kEffectTeleportRing);
+                play_effect_at(cur_x, cur_y, cur_z, kEffectDashWhoosh);
+
+                // 2. Perform warp directly to enemy
                 write_coords(body, target_x, ey, target_z);
                 write_f32(body + kFacingRva, std::atan2(edx, edz));
-                play_actor_motion(body, kMotionDash);
-                play_actor_effect(body, kEffectDashWhoosh);
+
+                // 3. Arrival colored teleport flash and lightning streak
+                play_effect_at(target_x, ey, target_z, kEffectTeleportFlash);
+                play_effect_at(target_x, ey, target_z, kEffectLightningSparks);
+
+                *reinterpret_cast<uint16_t*>(body) = 0x0602;
+                body[2] = 1;
+                play_actor_motion(body, kMotionStinger);
+
                 g_iframe_timer = 12;
                 g_cooldown = kWarpCooldownFrames;
                 g_active_action_name = "WARP DASH";
@@ -347,9 +367,19 @@ void trickster_execute_action() {
         float target_x = cur_x + f_dx * warp_dist;
         float target_z = cur_z + f_dz * warp_dist;
 
+        play_effect_at(cur_x, cur_y, cur_z, kEffectMagicCircle);
+        play_effect_at(cur_x, cur_y, cur_z, kEffectTeleportRing);
+        play_effect_at(cur_x, cur_y, cur_z, kEffectDashWhoosh);
+
         write_coords(body, target_x, cur_y, target_z);
-        play_actor_motion(body, kMotionDash);
-        play_actor_effect(body, kEffectDashWhoosh);
+
+        play_effect_at(target_x, cur_y, target_z, kEffectTeleportFlash);
+        play_effect_at(target_x, cur_y, target_z, kEffectLightningSparks);
+
+        *reinterpret_cast<uint16_t*>(body) = 0x0602;
+        body[2] = 1;
+        play_actor_motion(body, kMotionStinger);
+
         g_iframe_timer = 10;
         g_cooldown = kWarpCooldownFrames;
         g_active_action_name = "WARP DASH";
@@ -363,9 +393,18 @@ void trickster_execute_action() {
         float target_x = cur_x - f_dx * warp_dist;
         float target_z = cur_z - f_dz * warp_dist;
 
+        play_effect_at(cur_x, cur_y, cur_z, kEffectMagicCircle);
+        play_effect_at(cur_x, cur_y, cur_z, kEffectDashWhoosh);
+
         write_coords(body, target_x, cur_y, target_z);
+
+        play_effect_at(target_x, cur_y, target_z, kEffectTeleportFlash);
+        play_effect_at(target_x, cur_y, target_z, kEffectSparkStreak);
+
+        *reinterpret_cast<uint16_t*>(body) = 0x0902;
+        body[2] = 1;
         play_actor_motion(body, kMotionBackstep);
-        play_actor_effect(body, kEffectBackdashWhoosh);
+
         g_iframe_timer = 12;
         g_cooldown = kWarpCooldownFrames;
         g_active_action_name = "BACKDASH";
@@ -389,8 +428,19 @@ void trickster_execute_action() {
         g_dash_dz = f_dz;
     }
 
+    uintptr_t base = mod_base();
+    if (base) {
+        *reinterpret_cast<uint8_t*>(base + kMotionTrailRva) |= 0x1C;
+    }
+
+    *reinterpret_cast<uint16_t*>(body) = 0x0902;
+    body[2] = 1;
+    body[0x17A4] = 0;
+
     play_actor_motion(body, kMotionDash);
-    play_actor_effect(body, kEffectDashWhoosh);
+    play_effect_at(cur_x, cur_y, cur_z, kEffectDashWhoosh);
+    play_effect_at(cur_x, cur_y, cur_z, kEffectGroundDust);
+    play_effect_at(cur_x, cur_y, cur_z, kEffectSparkStreak);
 
     g_active_action_name = "DASH";
     mod_log("trickster: Dash started dx=%.2f dz=%.2f facing=%.2f dot=%.2f lock_on=%d", g_dash_dx, g_dash_dz, read_f32(body + kFacingRva), dot, lock_on ? 1 : 0);
@@ -399,6 +449,10 @@ void trickster_execute_action() {
 }  // namespace
 
 void trickster_init() {
+    uintptr_t base = mod_base();
+    if (base) {
+        *reinterpret_cast<uint8_t*>(base + kMotionTrailRva) &= 0xEB;
+    }
     g_dash_timer = 0;
     g_cooldown = 0;
     g_iframe_timer = 0;
@@ -473,6 +527,16 @@ void trickster_update() {
         // Continuously suppress any gun shooting animation
         clear_shoot_state(body);
 
+        // Keep Action 9 active in the player state machine throughout the dash
+        // so DMC1 engine maintains Dante in the evasive dash animation instead of idling
+        *reinterpret_cast<uint16_t*>(body) = 0x0902;
+        body[2] = 1;
+
+        uintptr_t base = mod_base();
+        if (base) {
+            *reinterpret_cast<uint8_t*>(base + kMotionTrailRva) |= 0x1C;
+        }
+
         float cur_x = read_f32(body + kPosBaseRva);
         float cur_z = read_f32(body + kPosBaseRva + 8);
 
@@ -486,7 +550,12 @@ void trickster_update() {
 
         g_dash_timer--;
         if (g_dash_timer == 0) {
-            // Dash completed: seamlessly transition into Run or Idle/Landing
+            // Turn off colored motion trail
+            if (base) {
+                *reinterpret_cast<uint8_t*>(base + kMotionTrailRva) &= 0xEB;
+            }
+
+            // Seamless transition
             bool input_held = false;
             if ((GetAsyncKeyState('W') & 0x8000) != 0 || (GetAsyncKeyState('S') & 0x8000) != 0 ||
                 (GetAsyncKeyState('A') & 0x8000) != 0 || (GetAsyncKeyState('D') & 0x8000) != 0 ||
@@ -503,8 +572,12 @@ void trickster_update() {
             }
 
             if (input_held) {
+                *reinterpret_cast<uint16_t*>(body) = 0x0202; // Action 2: Run
+                body[2] = 1;
                 play_actor_motion(body, kMotionRun);
             } else {
+                *reinterpret_cast<uint16_t*>(body) = 0x0002; // Action 0: Idle
+                body[2] = 0;
                 play_actor_motion(body, kMotionLanding);
             }
         }
