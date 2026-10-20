@@ -27,6 +27,7 @@ extern XInputSetStateFn real_set_state;
 void mod_start();
 void mod_on_get_state(DWORD user, XInputState* state);
 void mod_arm_mission(int mission, int mode);
+void mod_begin_mission();
 void mod_clear_mission();
 int mod_armed_mission();
 int mod_armed_mode();
