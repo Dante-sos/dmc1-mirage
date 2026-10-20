@@ -598,19 +598,28 @@ void install_hooks() {
     const uint8_t main_bytes[] = {0x41, 0x8B, 0x93, 0x9C, 0x00, 0x00, 0x00};
     const uint8_t load_bytes[] = {0x66, 0x89, 0x81, 0xCE, 0x1B, 0x00, 0x00};
     const uint8_t start_bytes[] = {0x0F, 0xB6, 0x41, 0x10, 0x88, 0x85, 0x64, 0x1E, 0x00, 0x00};
+    const uint8_t enter_bytes[] = {0x44, 0x89, 0xBD, 0xD4, 0x1C, 0x00, 0x00};
+    const uint8_t menu_bytes[] = {0x0F, 0xB6, 0x03, 0x48, 0x8B, 0xCB};
+    const uint8_t event_bytes[] = {0x0F, 0xB6, 0x03, 0x48, 0x8B, 0xCB};
     const uint8_t melee_bytes[] = {0x48, 0x89, 0x5C, 0x24, 0x08};
     const uint8_t ranged_bytes[] = {0x85, 0xC9};
     auto* main_site = reinterpret_cast<uint8_t*>(g_base + kMainLoopRva);
     auto* load_site = reinterpret_cast<uint8_t*>(g_base + kLoadSaveRva);
     auto* start_site = reinterpret_cast<uint8_t*>(g_base + kStartMissionRva);
+    auto* enter_site = reinterpret_cast<uint8_t*>(g_base + kEnterMissionRva);
+    auto* menu_site = reinterpret_cast<uint8_t*>(g_base + kMenuLoopRva);
+    auto* event_site = reinterpret_cast<uint8_t*>(g_base + kEventLoopRva);
     if (!expect_bytes(main_site, main_bytes, sizeof(main_bytes), "main loop") ||
         !expect_bytes(load_site, load_bytes, sizeof(load_bytes), "mission load") ||
         !expect_bytes(start_site, start_bytes, sizeof(start_bytes), "mission start") ||
+        !expect_bytes(enter_site, enter_bytes, sizeof(enter_bytes), "mission enter") ||
+        !expect_bytes(menu_site, menu_bytes, sizeof(menu_bytes), "title loop") ||
+        !expect_bytes(event_site, event_bytes, sizeof(event_bytes), "event loop") ||
         !expect_bytes(reinterpret_cast<void*>(g_base + kUpdateMeleeRva), melee_bytes, sizeof(melee_bytes), "melee update") ||
         !expect_bytes(reinterpret_cast<void*>(g_base + kUpdateRangedRva), ranged_bytes, sizeof(ranged_bytes), "gun update")) {
         return;
     }
-    uint8_t* page = alloc_near(g_base + kMainLoopRva, 0x1000);
+    uint8_t* page = alloc_near(g_base + kMainLoopRva, 0x2000);
     if (!page) {
         log_line("could not allocate hook memory near dmc1.exe");
         return;
@@ -622,13 +631,20 @@ void install_hooks() {
     cursor = write_stub(cursor, apply_pending_at_load, load_bytes, sizeof(load_bytes), load_site + sizeof(load_bytes));
     uint8_t* start_stub = cursor;
     cursor = write_stub(cursor, apply_pending_at_start, start_bytes, sizeof(start_bytes), start_site + sizeof(start_bytes));
+    uint8_t* enter_stub = cursor;
+    cursor = write_stub(cursor, apply_pending_at_enter, enter_bytes, sizeof(enter_bytes), enter_site + sizeof(enter_bytes));
+    uint8_t* menu_stub = cursor;
+    cursor = write_stub(cursor, apply_pending_at_menu, menu_bytes, sizeof(menu_bytes), menu_site + sizeof(menu_bytes));
+    uint8_t* event_stub = cursor;
+    cursor = write_stub(cursor, apply_pending_at_event, event_bytes, sizeof(event_bytes), event_site + sizeof(event_bytes));
     if (!patch_jump(main_site, sizeof(main_bytes), main_stub) || !patch_jump(load_site, sizeof(load_bytes), load_stub) ||
-        !patch_jump(start_site, sizeof(start_bytes), start_stub)) {
+        !patch_jump(start_site, sizeof(start_bytes), start_stub) || !patch_jump(enter_site, sizeof(enter_bytes), enter_stub) ||
+        !patch_jump(menu_site, sizeof(menu_bytes), menu_stub) || !patch_jump(event_site, sizeof(event_bytes), event_stub)) {
         log_line("hook patch failed");
         return;
     }
     g_hooks_ready = true;
-    log_line("hooks installed main=%p load=%p start=%p", main_stub, load_stub, start_stub);
+    log_line("hooks installed main=%p load=%p start=%p enter=%p menu=%p event=%p", main_stub, load_stub, start_stub, enter_stub, menu_stub, event_stub);
 }
 
 }  // namespace
