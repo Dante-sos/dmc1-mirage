@@ -1516,12 +1516,32 @@ LRESULT CALLBACK keyboard_hook(int code, WPARAM wp, LPARAM lp) {
             }
         }
         if (mod_in_game()) {
+            bool down = (wp == WM_KEYDOWN || wp == WM_SYSKEYDOWN);
             switch (info->vkCode) {
             case 'L':
+                if (down) {
+                    style_notify_key_action();
+                }
+                return 1;
             case 'Z':
+                if (down) {
+                    style_set(StyleType::Trickster);
+                }
+                return 1;
             case 'X':
+                if (down) {
+                    style_set(StyleType::Swordmaster);
+                }
+                return 1;
             case 'C':
+                if (down) {
+                    style_set(StyleType::Gunslinger);
+                }
+                return 1;
             case 'V':
+                if (down) {
+                    style_set(StyleType::RoyalGuard);
+                }
                 return 1;
             }
         }

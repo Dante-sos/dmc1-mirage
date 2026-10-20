@@ -20,19 +20,21 @@ constexpr uintptr_t kEnemyArrayRva = 0x4CB6BB0;
 constexpr uintptr_t kShootTimerRva = 0x1C05;
 
 constexpr int kDashFrames = 10;
-constexpr int kDashCooldownFrames = 12;
-constexpr int kWarpCooldownFrames = 18;
+constexpr int kDashCooldownFrames = 0;
+constexpr int kWarpCooldownFrames = 6;
+constexpr int kActionBufferFrames = 8;
 
 int g_dash_timer = 0;
 int g_cooldown = 0;
 int g_iframe_timer = 0;
 uint16_t g_protected_hp = 0;
 
+int g_action_buffer = 0;
+bool g_has_buffered_pad = false;
+XInputState g_buffered_pad_state{};
+
 float g_dash_dx = 0.0f;
 float g_dash_dz = 0.0f;
-float g_prev_step_x = 0.0f;
-float g_prev_step_z = 0.0f;
-int g_blocked_frames = 0;
 
 bool g_is_air_dash = false;
 bool g_sky_star_used = false;
@@ -160,54 +162,19 @@ uint8_t* find_target_enemy(uint8_t* body) {
 }
 
 float get_dash_speed(int step) {
-    // 10 frame burst: 55 -> 40 -> 25 units/frame (total ~400 units).
-    // Fast, responsive, stylish dash that covers substantial ground.
+    // 10 frame burst: 38 -> 28 -> 18 units/frame (total ~280 units).
+    // Fast, responsive, stylish dash that reliably stays safely under
+    // Dante's capsule radius (64 units) per frame to guarantee no clipping.
     if (step <= 3) {
-        return 55.0f;
+        return 38.0f;
     }
     if (step <= 7) {
-        return 40.0f;
+        return 28.0f;
     }
-    return 25.0f;
+    return 18.0f;
 }
 
-}  // namespace
-
-void trickster_init() {
-    g_dash_timer = 0;
-    g_cooldown = 0;
-    g_iframe_timer = 0;
-    g_protected_hp = 0;
-    g_dash_dx = 0.0f;
-    g_dash_dz = 0.0f;
-    g_prev_step_x = 0.0f;
-    g_prev_step_z = 0.0f;
-    g_blocked_frames = 0;
-    g_is_air_dash = false;
-    g_sky_star_used = false;
-    g_active_action_name = "";
-}
-
-bool trickster_is_dashing() {
-    return g_dash_timer > 0;
-}
-
-bool trickster_is_invulnerable() {
-    return g_iframe_timer > 0;
-}
-
-const char* trickster_action_name() {
-    if (g_dash_timer > 0 || g_iframe_timer > 0) {
-        return g_active_action_name;
-    }
-    return "";
-}
-
-void trickster_on_action(XInputState* state) {
-    if (g_dash_timer > 0 || g_cooldown > 0) {
-        return;
-    }
-
+void trickster_execute_action() {
     uint8_t* body = mod_actor();
     if (!body) {
         return;
@@ -217,19 +184,19 @@ void trickster_on_action(XInputState* state) {
     clear_shoot_state(body);
 
     float facing = read_f32(body + kFacingRva);
-    float visual_y = read_f32(body + kPosVisualRva + 4);
-    float base_y = read_f32(body + kPosBaseRva + 4);
-    bool airborne = (visual_y - base_y) > 35.0f;
+    float cur_y = read_f32(body + kPosBaseRva + 4);
+    float floor_y = read_f32(body + kPosTargetRva + 4);
+    bool airborne = (cur_y - floor_y) > 65.0f;
 
     bool lock_on = false;
     SHORT stick_y = 0;
     SHORT stick_x = 0;
 
-    if (state) {
-        WORD buttons = state->gamepad.buttons;
+    if (g_has_buffered_pad) {
+        WORD buttons = g_buffered_pad_state.gamepad.buttons;
         lock_on = (buttons & 0x0200) != 0; // RB in XInput is 0x0200 (Right Shoulder)
-        stick_y = state->gamepad.leftY;
-        stick_x = state->gamepad.leftX;
+        stick_y = g_buffered_pad_state.gamepad.leftY;
+        stick_x = g_buffered_pad_state.gamepad.leftX;
     }
 
     // Keyboard lock-on (Space / Shift) and direction (W/S/A/D or Arrows)
@@ -250,13 +217,12 @@ void trickster_on_action(XInputState* state) {
     // Record HP for i-frames invulnerability
     g_protected_hp = *reinterpret_cast<uint16_t*>(body + kHpRva);
 
-    bool forward_pressed = stick_y > 5000;
-    bool back_pressed = stick_y < -5000;
+    bool forward_pressed = stick_y > 15000;
+    bool back_pressed = stick_y < -15000;
 
     // 1. Air Trick (Forward Warp) -> Lock-on + Forward + Style Action
     if (lock_on && forward_pressed) {
         float cur_x = read_f32(body + kPosBaseRva);
-        float cur_y = read_f32(body + kPosBaseRva + 4);
         float cur_z = read_f32(body + kPosBaseRva + 8);
 
         // Find locked-on or nearest living enemy
@@ -285,8 +251,8 @@ void trickster_on_action(XInputState* state) {
             }
         }
 
-        // If no enemy is targeted or nearby, warp forward 850 units across the room
-        float warp_dist = 850.0f;
+        // If no enemy is targeted or nearby, warp forward 750 units across the room
+        float warp_dist = 750.0f;
         float target_x = cur_x + std::sin(facing) * warp_dist;
         float target_z = cur_z + std::cos(facing) * warp_dist;
 
@@ -301,10 +267,9 @@ void trickster_on_action(XInputState* state) {
     // 2. Trick Down (Retreat Warp) -> Lock-on + Back + Style Action
     if (lock_on && back_pressed) {
         float cur_x = read_f32(body + kPosBaseRva);
-        float cur_y = read_f32(body + kPosBaseRva + 4);
         float cur_z = read_f32(body + kPosBaseRva + 8);
 
-        float warp_dist = 500.0f;
+        float warp_dist = 450.0f;
         float target_x = cur_x - std::sin(facing) * warp_dist;
         float target_z = cur_z - std::cos(facing) * warp_dist;
 
@@ -318,23 +283,24 @@ void trickster_on_action(XInputState* state) {
 
     // 3. Sky Star (Air Dash) -> In mid-air
     if (airborne) {
-        if (g_sky_star_used) {
+        if (!g_sky_star_used) {
+            g_sky_star_used = true;
+            g_is_air_dash = true;
+            g_dash_timer = 8;
+            g_iframe_timer = 10;
+            g_cooldown = kDashCooldownFrames;
+
+            g_dash_dx = std::sin(facing);
+            g_dash_dz = std::cos(facing);
+            g_active_action_name = "SKY STAR";
+            mod_log("trickster: Sky Star air dash facing=%.2f", facing);
             return;
         }
-        g_sky_star_used = true;
-        g_is_air_dash = true;
-        g_dash_timer = 8;
-        g_iframe_timer = 10;
-        g_cooldown = kDashCooldownFrames;
-
-        g_dash_dx = std::sin(facing);
-        g_dash_dz = std::cos(facing);
-        g_prev_step_x = read_f32(body + kPosBaseRva);
-        g_prev_step_z = read_f32(body + kPosBaseRva + 8);
-        g_blocked_frames = 0;
-        g_active_action_name = "SKY STAR";
-        mod_log("trickster: Sky Star air dash facing=%.2f", facing);
-        return;
+        // If already used in this jump, only drop input if high in the air;
+        // if close to ground, fall through to Ground Dash.
+        if ((cur_y - floor_y) > 90.0f) {
+            return;
+        }
     }
 
     // 4. Ground Dash -> Standard Style Action
@@ -345,11 +311,59 @@ void trickster_on_action(XInputState* state) {
 
     g_dash_dx = std::sin(facing);
     g_dash_dz = std::cos(facing);
-    g_prev_step_x = read_f32(body + kPosBaseRva);
-    g_prev_step_z = read_f32(body + kPosBaseRva + 8);
-    g_blocked_frames = 0;
     g_active_action_name = "DASH";
     mod_log("trickster: Dash started facing=%.2f", facing);
+}
+
+}  // namespace
+
+void trickster_init() {
+    g_dash_timer = 0;
+    g_cooldown = 0;
+    g_iframe_timer = 0;
+    g_protected_hp = 0;
+    g_action_buffer = 0;
+    g_has_buffered_pad = false;
+    std::memset(&g_buffered_pad_state, 0, sizeof(g_buffered_pad_state));
+    g_dash_dx = 0.0f;
+    g_dash_dz = 0.0f;
+    g_is_air_dash = false;
+    g_sky_star_used = false;
+    g_active_action_name = "";
+}
+
+bool trickster_is_dashing() {
+    return g_dash_timer > 0;
+}
+
+bool trickster_is_invulnerable() {
+    return g_iframe_timer > 0;
+}
+
+const char* trickster_action_name() {
+    if (g_dash_timer > 0 || g_iframe_timer > 0) {
+        return g_active_action_name;
+    }
+    return "";
+}
+
+void trickster_request_action(const XInputState* state) {
+    g_action_buffer = kActionBufferFrames;
+    if (state) {
+        g_buffered_pad_state = *state;
+        g_has_buffered_pad = true;
+    } else {
+        g_has_buffered_pad = false;
+    }
+
+    if (g_dash_timer == 0 && g_cooldown == 0) {
+        g_action_buffer = 0;
+        trickster_execute_action();
+    }
+}
+
+void trickster_on_action(XInputState* state) {
+    trickster_request_action(state);
 }
 
 void trickster_update() {
@@ -357,17 +371,28 @@ void trickster_update() {
         g_cooldown--;
     }
 
+    // Fire buffered action as soon as Dante becomes ready
+    if (g_dash_timer == 0 && g_cooldown == 0 && g_action_buffer > 0) {
+        g_action_buffer = 0;
+        trickster_execute_action();
+    }
+
+    if (g_action_buffer > 0) {
+        g_action_buffer--;
+    }
+
     uint8_t* body = mod_actor();
     if (!body) {
         g_dash_timer = 0;
         g_iframe_timer = 0;
+        g_action_buffer = 0;
         return;
     }
 
     // Ground check to reset Sky Star
-    float visual_y = read_f32(body + kPosVisualRva + 4);
-    float base_y = read_f32(body + kPosBaseRva + 4);
-    if ((visual_y - base_y) <= 15.0f) {
+    float cur_y = read_f32(body + kPosBaseRva + 4);
+    float floor_y = read_f32(body + kPosTargetRva + 4);
+    if ((cur_y - floor_y) <= 30.0f) {
         g_sky_star_used = false;
     }
 
@@ -379,25 +404,6 @@ void trickster_update() {
         float cur_x = read_f32(body + kPosBaseRva);
         float cur_z = read_f32(body + kPosBaseRva + 8);
 
-        // Wall / Pillar contact detection:
-        // Only if Dante's position was clamped and made virtually zero progress for 2 consecutive frames,
-        // stop the dash cleanly against the wall surface.
-        if (g_dash_timer < kDashFrames - 1) {
-            float dist_moved = std::hypot(cur_x - g_prev_step_x, cur_z - g_prev_step_z);
-            if (dist_moved < 1.0f) {
-                if (++g_blocked_frames >= 2) {
-                    g_dash_timer = 0;
-                    g_is_air_dash = false;
-                    g_blocked_frames = 0;
-                    return;
-                }
-            } else {
-                g_blocked_frames = 0;
-            }
-        }
-        g_prev_step_x = cur_x;
-        g_prev_step_z = cur_z;
-
         int step = (kDashFrames - g_dash_timer) + 1;
         float speed = get_dash_speed(step);
 
@@ -405,9 +411,11 @@ void trickster_update() {
         float next_z = cur_z + g_dash_dz * speed;
 
         if (g_is_air_dash) {
-            // Keep height during Sky Star to create the hover/glide feel
+            // Keep height across all roots during Sky Star to create the hover/glide feel
             write_horizontal_coords(body, next_x, next_z);
-            write_f32(body + kPosVisualRva + 4, visual_y);
+            write_f32(body + kPosBaseRva + 4, cur_y);
+            write_f32(body + kPosVisualRva + 4, cur_y);
+            write_f32(body + kPosTargetRva + 4, cur_y);
         } else {
             // Ground dash only moves horizontal coordinates so floor collision adjusts Y cleanly
             write_horizontal_coords(body, next_x, next_z);

@@ -2,6 +2,8 @@
 #include "style_trickster.h"
 #include "mod.h"
 
+#include <atomic>
+
 namespace {
 
 constexpr WORD kDpadUp = 0x0001;
@@ -22,6 +24,7 @@ bool g_key_x = false;
 bool g_key_c = false;
 bool g_key_v = false;
 bool g_key_l = false;
+std::atomic<bool> g_key_action_notified{false};
 
 using GetDeviceStateFn = HRESULT(__fastcall*)(void* this_ptr, DWORD cbData, void* lpvData);
 GetDeviceStateFn g_real_get_device_state = nullptr;
@@ -167,9 +170,9 @@ void style_on_pad(XInputState* state) {
 
     if (g_active_style == StyleType::Trickster) {
         if (action_pressed) {
-            trickster_on_action(state);
+            trickster_request_action(state);
         }
-        // Consume B, Square (shoot), and Right Trigger so gun attacks never fire during Trickster actions
+        // Consume B, Square (shoot), Melee (Y), and Right Trigger so gun attacks never fire during Trickster actions
         if (action_held || key_l_held || trickster_is_dashing()) {
             state->gamepad.buttons &= ~kButtonB;
             state->gamepad.buttons &= ~kButtonX;
@@ -179,6 +182,10 @@ void style_on_pad(XInputState* state) {
     }
 }
 
+void style_notify_key_action() {
+    g_key_action_notified.store(true);
+}
+
 void style_update() {
     if (!mod_in_game()) {
         g_key_z = false;
@@ -186,6 +193,7 @@ void style_update() {
         g_key_c = false;
         g_key_v = false;
         g_key_l = false;
+        g_key_action_notified.store(false);
         return;
     }
 
@@ -202,10 +210,10 @@ void style_update() {
         style_set(StyleType::RoyalGuard);
     }
 
-    // Keyboard style action: L
-    if (key_edge('L', g_key_l)) {
+    // Keyboard style action: L (both direct hook notification and edge polling)
+    if (g_key_action_notified.exchange(false) || key_edge('L', g_key_l)) {
         if (g_active_style == StyleType::Trickster) {
-            trickster_on_action(nullptr);
+            trickster_request_action(nullptr);
         }
     }
 

@@ -16,6 +16,7 @@ enum class StyleType : int {
 void style_init();
 void style_on_pad(XInputState* state);
 void style_update();
+void style_notify_key_action();
 StyleType style_current();
 const char* style_name(StyleType type);
 void style_set(StyleType type);
