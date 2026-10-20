@@ -93,6 +93,7 @@ bool g_setting_hud_enabled = true;
 bool g_setting_fast_dash = true;
 bool g_setting_quick_switch = true;
 int g_settings_row = 0;
+bool g_launcher_dismissed = false;
 std::atomic<bool> g_capture{true};
 std::atomic<bool> g_inject_on{false};
 bool g_inject_keep = false;
@@ -1241,7 +1242,10 @@ void finish_load_seek() {
     g_wait_release.store(true);
 }
 
-void show_launcher() {
+void show_launcher(bool force = false) {
+    if (g_launcher_dismissed && !force) {
+        return;
+    }
     g_launcher_index = 0;
     g_screen = Screen::Launcher;
     g_capture.store(true);
@@ -1254,7 +1258,7 @@ void show_launcher() {
 }
 
 void show_title() {
-    show_launcher();
+    show_launcher(false);
 }
 
 void hide_menu() {
@@ -1444,7 +1448,7 @@ bool split_bottom_labels(const uint8_t* pixels, int width, int height, int pitch
 }
 
 void classify_probe(const uint8_t* pixels, int width, int height, int pitch) {
-    if (g_screen != Screen::None || g_inject_on.load() || g_probe_cooldown > 0) {
+    if (g_launcher_dismissed || g_screen != Screen::None || g_inject_on.load() || g_probe_cooldown > 0) {
         return;
     }
     if (width < 16 || height < 16) {
@@ -1510,7 +1514,7 @@ void update_menu_input() {
         return;
     }
     if (reopen) {
-        show_launcher();
+        show_launcher(true);
         return;
     }
     if (g_screen == Screen::None) {
@@ -1533,6 +1537,7 @@ void update_menu_input() {
         if (confirm) {
             switch (g_launcher_index) {
                 case 0: // LOAD DATA
+                    g_launcher_dismissed = true;
                     mod_release_hold();
                     begin_load_seek();
                     g_screen = Screen::None;
@@ -1547,6 +1552,7 @@ void update_menu_input() {
                     g_screen = Screen::Settings;
                     break;
                 case 4: // START GAME
+                    g_launcher_dismissed = true;
                     mod_arm_mission(1, kModeValues[g_mode]);
                     g_screen = Screen::None;
                     g_capture.store(false);
@@ -1606,6 +1612,7 @@ void update_menu_input() {
         move_mode(1);
     }
     if (confirm) {
+        g_launcher_dismissed = true;
         mod_arm_mission(g_mission + 1, kModeValues[g_mode]);
         g_screen = Screen::None;
         g_capture.store(false);

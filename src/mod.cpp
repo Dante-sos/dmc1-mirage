@@ -436,10 +436,10 @@ extern "C" void apply_pending_at_event() {
     }
     if (g_start_requested.load() && (g_hold_event.load() || event[0] == 0)) {
         stage_chosen_mission();
-        event[0] = 0;
+        event[0] = 1; // Event State 1: Launches directly into mission, skipping opening cutscene!
         g_hold_event.store(false);
         g_start_requested.store(false);
-        log_line("event loop launch %d", g_pending_mission.load());
+        log_line("event loop launch %d directly into mission (skipped intro)", g_pending_mission.load());
         return;
     }
     if (event[0] == 0 && !g_start_requested.load()) {
