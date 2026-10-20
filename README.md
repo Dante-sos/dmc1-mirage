@@ -26,12 +26,26 @@ trigger_threshold=30
 
 Reset on the pause menu returns to the title screen.
 
+## Styles
+
+Switch styles during gameplay using the D-Pad or keyboard keys **Z, X, C, V**:
+- **D-Pad Up** / **Z**: **Trickster**
+- **D-Pad Right** / **X**: **Swordmaster** *(coming soon)*
+- **D-Pad Left** / **C**: **Gunslinger** *(coming soon)*
+- **D-Pad Down** / **V**: **Royal Guard** *(coming soon)*
+
+### Trickster Actions (B / Circle Button or L Key)
+- **Ground Dash**: Tap **B** or **L** to dash forward or in the direction of movement with invulnerability frames (i-frames).
+- **Sky Star (Air Dash)**: Tap **B** or **L** mid-air to dash horizontally and reset vertical fall.
+- **Air Trick (Forward Warp)**: Hold **Lock-On (RB / Space)** + **Forward (W)** + **B / L** to instantly warp forward directly into attack range.
+- **Trick Down (Retreat Warp)**: Hold **Lock-On (RB / Space)** + **Back (S)** + **B / L** to warp backward and escape enemy attacks.
+
 ## Build
 
 The proxy is built with g++ from the `dmc1-switch` directory:
 
 ```
-g++ -shared -O2 -std=c++17 -static -static-libgcc -static-libstdc++ -o build\XINPUT9_1_0.dll src\xinput_proxy.cpp src\mod.cpp src\ui.cpp xinput.def -ld3d11 -ldxgi -ld3dcompiler -lgdiplus -lgdi32 -lole32 -luuid -luser32
+g++ -shared -O2 -std=c++17 -static -static-libgcc -static-libstdc++ -o build\XINPUT9_1_0.dll src\xinput_proxy.cpp src\mod.cpp src\ui.cpp src\style.cpp src\style_trickster.cpp xinput.def -ld3d11 -ldxgi -ld3dcompiler -lgdiplus -lgdi32 -lole32 -luuid -luser32
 ```
 
 `tools/build_installer.py` then packs that DLL into `ApplyDMC1Switch.exe`.
