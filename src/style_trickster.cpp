@@ -31,8 +31,8 @@ constexpr uintptr_t kGetEffectInstanceRva = 0x820D0;
 constexpr uint32_t kMotionIdle = 0;
 constexpr uint32_t kMotionWalk = 1;
 constexpr uint32_t kMotionRun = 2;
-constexpr uint32_t kMotionDashSlide = 0x22;   // 34 decimal: authentic DMC1 low skate slide motion (from 0x2CA374: 0x0A22)
-constexpr uint32_t kMotionSkidTurn = 0x2B;   // 43 decimal: alternative low crouch slide
+constexpr uint32_t kMotionDashSlide = 0x25;   // 37 decimal: authentic DMC1 evasive slide/hop
+constexpr uint32_t kMotionSprintSlide = 0x20; // 32 decimal: authentic DMC1 sprint slide
 constexpr uint32_t kMotionBackflip = 0x1D;   // 29 decimal: authentic backflip/retreat
 constexpr uint32_t kMotionStinger = 0x523;   // Stinger forward thrust
 
@@ -40,13 +40,12 @@ constexpr uint32_t kMotionStinger = 0x523;   // Stinger forward thrust
 constexpr uintptr_t kMotionTrailRva = 0x56383B;
 constexpr uint32_t kEffectDashWhoosh = 0x00440000;
 constexpr uint32_t kEffectGroundDust = 0x00030000;
+constexpr uint32_t kEffectEvasionWind = 0x000A0000;
 constexpr uint32_t kEffectSparkStreak = 0x00580021;
 constexpr uint32_t kEffectLightningSparks = 0x00580023;
 constexpr uint32_t kEffectMagicCircle = 0x00170000;
 constexpr uint32_t kEffectTeleportRing = 0x01040001;
 constexpr uint32_t kEffectTeleportFlash = 0x01040002;
-constexpr uint32_t kEffectColorAura = 0x00610002;
-constexpr uint32_t kEffectColorStreak = 0x00620002;
 
 using ActorPlayMotionFn = void(__fastcall*)(void* actor, void* motion_table, uint32_t motion_id, uint32_t mode, uint32_t flags);
 using PlayEffectFn = void*(__fastcall*)(uint32_t effect_id, void* p1, void* pos, uint64_t flags);
@@ -83,14 +82,14 @@ inline void write_f32(uint8_t* address, float val) {
     std::memcpy(address, &val, sizeof(val));
 }
 
-void play_actor_motion(uint8_t* body, uint32_t motion_id) {
+void play_actor_motion(uint8_t* body, uint32_t motion_id, uint8_t blend_frames = 3) {
     uintptr_t base = mod_base();
     if (!base || !body) {
         return;
     }
 
-    *reinterpret_cast<uint32_t*>(body + kMotionPrevRva) = motion_id;
-    *reinterpret_cast<uint32_t*>(body + kMotionActiveRva) = motion_id;
+    *reinterpret_cast<uint32_t*>(body + kMotionPrevRva) = motion_id & 0xFF;
+    *reinterpret_cast<uint32_t*>(body + kMotionActiveRva) = motion_id & 0xFF;
 
     void* motion_table = *reinterpret_cast<void**>(body + 0x540);
     if (!motion_table) {
@@ -98,8 +97,8 @@ void play_actor_motion(uint8_t* body, uint32_t motion_id) {
     }
 
     uint32_t full_id = motion_id;
-    if (motion_id <= 0xFF) {
-        full_id = 0x0A00 | motion_id; // Blend mode 0x0A for smooth transitional animation
+    if ((motion_id & 0xFF00) == 0) {
+        full_id = (static_cast<uint32_t>(blend_frames) << 8) | (motion_id & 0xFF);
     }
 
     auto play_fn = reinterpret_cast<ActorPlayMotionFn>(base + kActorPlayMotionRva);
@@ -151,17 +150,34 @@ void play_effect_at(float x, float y, float z, uint32_t effect_id, float r = -1.
 }
 
 void write_coords(uint8_t* body, float x, float y, float z) {
-    for (uintptr_t off : {kPosBaseRva, kPosVisualRva, kPosTargetRva}) {
+    if (!body) {
+        return;
+    }
+    for (uintptr_t off : {kPosBaseRva, kPosVisualRva, kPosTargetRva, uintptr_t{0x1ACC}}) {
         write_f32(body + off, x);
         write_f32(body + off + 4, y);
         write_f32(body + off + 8, z);
     }
+    auto** xform_slot = reinterpret_cast<uint8_t**>(body + 0x180);
+    if (xform_slot && *xform_slot) {
+        write_f32(*xform_slot + 0x30, x);
+        write_f32(*xform_slot + 0x34, y);
+        write_f32(*xform_slot + 0x38, z);
+    }
 }
 
 void write_horizontal_coords(uint8_t* body, float x, float z) {
-    for (uintptr_t off : {kPosBaseRva, kPosVisualRva, kPosTargetRva}) {
+    if (!body) {
+        return;
+    }
+    for (uintptr_t off : {kPosBaseRva, kPosVisualRva, kPosTargetRva, uintptr_t{0x1ACC}}) {
         write_f32(body + off, x);
         write_f32(body + off + 8, z);
+    }
+    auto** xform_slot = reinterpret_cast<uint8_t**>(body + 0x180);
+    if (xform_slot && *xform_slot) {
+        write_f32(*xform_slot + 0x30, x);
+        write_f32(*xform_slot + 0x38, z);
     }
 }
 
@@ -262,21 +278,21 @@ uint8_t* find_target_enemy(uint8_t* body) {
 }
 
 float get_dash_speed(int step) {
-    // 16 frame dynamic momentum curve (total 628 units):
-    // Frames 1-3:   58.0f (explosive launch: 174 units)
-    // Frames 4-8:   46.0f (high-speed sustained glide: 230 units)
-    // Frames 9-13:  34.0f (smooth deceleration: 170 units)
-    // Frames 14-16: 18.0f (seamless landing recovery: 54 units)
+    // 16 frame dynamic momentum curve (total 458 units):
+    // Frames 1-3:   42.0f (explosive launch: 126 units)
+    // Frames 4-8:   34.0f (high-speed sustained glide: 170 units)
+    // Frames 9-13:  24.0f (smooth deceleration: 120 units)
+    // Frames 14-16: 14.0f (seamless landing recovery: 42 units)
     if (step <= 3) {
-        return 58.0f;
+        return 42.0f;
     }
     if (step <= 8) {
-        return 46.0f;
-    }
-    if (step <= 13) {
         return 34.0f;
     }
-    return 18.0f;
+    if (step <= 13) {
+        return 24.0f;
+    }
+    return 14.0f;
 }
 
 void trickster_execute_action() {
@@ -383,25 +399,23 @@ void trickster_execute_action() {
                 float target_x = cur_x + (edx / edist) * stop_dist;
                 float target_z = cur_z + (edz / edist) * stop_dist;
 
-                // 1. Departure magic glyph, aura, and teleport ring at origin
+                // 1. Departure magic glyph and teleport ring at origin
                 play_effect_at(cur_x, cur_y, cur_z, kEffectMagicCircle);
                 play_effect_at(cur_x, cur_y, cur_z, kEffectTeleportRing);
-                play_effect_at(cur_x, cur_y, cur_z, kEffectDashWhoosh);
-                play_effect_at(cur_x, cur_y, cur_z, kEffectColorAura, 230.0f, 40.0f, 60.0f, 220.0f);
+                play_effect_at(cur_x, cur_y + 40.0f, cur_z, kEffectDashWhoosh);
 
                 // 2. Perform warp directly to enemy
                 write_coords(body, target_x, ey, target_z);
                 write_f32(body + kFacingRva, std::atan2(edx, edz));
 
-                // 3. Arrival colored teleport flash and lightning streak
+                // 3. Arrival teleport flash and lightning sparks
                 play_effect_at(target_x, ey, target_z, kEffectTeleportFlash);
                 play_effect_at(target_x, ey, target_z, kEffectLightningSparks);
-                play_effect_at(target_x, ey, target_z, kEffectColorStreak, 240.0f, 30.0f, 70.0f, 240.0f);
 
                 *reinterpret_cast<uint16_t*>(body) = 0x0001;
                 body[2] = 1;
-                body[0x17A4] = 0;
-                play_actor_motion(body, kMotionStinger);
+                body[0x17A4] = 0x80;
+                play_actor_motion(body, kMotionStinger, 2);
 
                 g_iframe_timer = 12;
                 g_cooldown = kWarpCooldownFrames;
@@ -418,19 +432,17 @@ void trickster_execute_action() {
 
         play_effect_at(cur_x, cur_y, cur_z, kEffectMagicCircle);
         play_effect_at(cur_x, cur_y, cur_z, kEffectTeleportRing);
-        play_effect_at(cur_x, cur_y, cur_z, kEffectDashWhoosh);
-        play_effect_at(cur_x, cur_y, cur_z, kEffectColorAura, 230.0f, 40.0f, 60.0f, 220.0f);
+        play_effect_at(cur_x, cur_y + 40.0f, cur_z, kEffectDashWhoosh);
 
         write_coords(body, target_x, cur_y, target_z);
 
         play_effect_at(target_x, cur_y, target_z, kEffectTeleportFlash);
         play_effect_at(target_x, cur_y, target_z, kEffectLightningSparks);
-        play_effect_at(target_x, cur_y, target_z, kEffectColorStreak, 240.0f, 30.0f, 70.0f, 240.0f);
 
         *reinterpret_cast<uint16_t*>(body) = 0x0001;
         body[2] = 1;
-        body[0x17A4] = 0;
-        play_actor_motion(body, kMotionStinger);
+        body[0x17A4] = 0x80;
+        play_actor_motion(body, kMotionStinger, 2);
 
         g_iframe_timer = 10;
         g_cooldown = kWarpCooldownFrames;
@@ -446,19 +458,17 @@ void trickster_execute_action() {
         float target_z = cur_z - f_dz * warp_dist;
 
         play_effect_at(cur_x, cur_y, cur_z, kEffectMagicCircle);
-        play_effect_at(cur_x, cur_y, cur_z, kEffectDashWhoosh);
-        play_effect_at(cur_x, cur_y, cur_z, kEffectColorAura, 0.0f, 0.0f, 0.0f, 220.0f);
+        play_effect_at(cur_x, cur_y + 40.0f, cur_z, kEffectDashWhoosh);
 
         write_coords(body, target_x, cur_y, target_z);
 
         play_effect_at(target_x, cur_y, target_z, kEffectTeleportFlash);
         play_effect_at(target_x, cur_y, target_z, kEffectSparkStreak);
-        play_effect_at(target_x, cur_y, target_z, kEffectColorStreak, 0.0f, 0.0f, 0.0f, 220.0f);
 
-        *reinterpret_cast<uint16_t*>(body) = 0x0001;
-        body[2] = 1;
-        body[0x17A4] = 0;
-        play_actor_motion(body, kMotionBackflip);
+        *reinterpret_cast<uint16_t*>(body) = 0x0102; // Action 2, Subaction 1
+        body[2] = 2; // Step 2 = backflip
+        body[0x17A4] = 0x80;
+        play_actor_motion(body, kMotionBackflip, 3);
 
         g_iframe_timer = 12;
         g_cooldown = kWarpCooldownFrames;
@@ -472,16 +482,21 @@ void trickster_execute_action() {
     g_iframe_timer = kDashFrames;
     g_cooldown = kDashCooldownFrames;
 
+    float dash_facing = facing;
     if (has_direction) {
         // Dash in the direction pressed (moving left, right, forward, backward, or strafe)
         g_dash_dx = in_x;
         g_dash_dz = in_z;
-        write_f32(body + kFacingRva, std::atan2(in_x, in_z));
+        dash_facing = std::atan2(in_x, in_z);
+        write_f32(body + kFacingRva, dash_facing);
     } else {
         // Neutral dash forward in current facing
         g_dash_dx = f_dx;
         g_dash_dz = f_dz;
     }
+
+    write_f32(body + 0x1928, dash_facing);
+    write_f32(body + 0x1A28, dash_facing);
 
     uintptr_t base = mod_base();
     if (base) {
@@ -497,23 +512,27 @@ void trickster_execute_action() {
     write_f32(body + 0x218, 0.0f);
     write_f32(body + 0x21C, 1.0f);
 
-    // Set player state machine to ground locomotion slide (Category 1, Subaction 2 = Skid Slide)
-    // Subaction 2 allows the low skate slide animation to play without being cancelled into idle!
-    *reinterpret_cast<uint16_t*>(body) = 0x0201;
-    body[2] = 1;
-    body[0x17A4] = 0;
+    // Set player state machine to active Evasion (Action 2, Subaction 1, Step 4 = Evasive slide/hop)
+    *reinterpret_cast<uint16_t*>(body) = 0x0102;
+    body[2] = 4;
+    body[0x17A4] = 0x80; // Uninterruptible action lock
 
-    // Trigger authentic DMC3-style low skate slide motion
-    play_actor_motion(body, kMotionDashSlide);
+    // Initial forward dash velocity
+    float init_speed = get_dash_speed(1);
+    write_f32(body + 0x1F0, g_dash_dx * init_speed);
+    write_f32(body + 0x1F4, 0.0f);
+    write_f32(body + 0x1F8, g_dash_dz * init_speed);
+
+    // Trigger authentic DMC1 evasive slide motion with crisp 3-frame blend
+    play_actor_motion(body, kMotionDashSlide, 3);
 
     // 3D particles directly at Dante's body in world space
-    play_effect_at(cur_x, cur_y + 45.0f, cur_z, kEffectColorStreak, 220.0f, 25.0f, 35.0f, 210.0f);
-    play_effect_at(cur_x, cur_y + 60.0f, cur_z, kEffectColorAura, 0.0f, 0.0f, 0.0f, 230.0f);
+    play_effect_at(cur_x, cur_y + 35.0f, cur_z, kEffectEvasionWind);
     play_effect_at(cur_x, cur_y + 40.0f, cur_z, kEffectDashWhoosh);
     play_effect_at(cur_x, cur_y, cur_z, kEffectGroundDust);
 
     g_active_action_name = "DASH";
-    mod_log("trickster: Dash started dx=%.2f dz=%.2f facing=%.2f dot=%.2f lock_on=%d", g_dash_dx, g_dash_dz, read_f32(body + kFacingRva), dot, lock_on ? 1 : 0);
+    mod_log("trickster: Dash started dx=%.2f dz=%.2f facing=%.2f dot=%.2f lock_on=%d", g_dash_dx, g_dash_dz, dash_facing, dot, lock_on ? 1 : 0);
 }
 
 }  // namespace
@@ -637,13 +656,16 @@ void trickster_update() {
             *reinterpret_cast<uint8_t*>(base + kMotionTrailRva) |= 0x18;
         }
 
-        // Maintain ground slide state (Action 1, Subaction 2) and ensure lockout flag remains 0
-        *reinterpret_cast<uint16_t*>(body) = 0x0201;
-        body[2] = 1;
-        body[0x17A4] = 0;
+        // Maintain active evasion action state and uninterruptible lock
+        *reinterpret_cast<uint16_t*>(body) = 0x0102; // Action 2, Subaction 1
+        body[2] = 5; // Step 5 = evasion physics active step
+        body[0x17A4] = 0x80;
 
-        // Keep Dante facing strictly in the dash direction throughout the slide
-        write_f32(body + kFacingRva, std::atan2(g_dash_dx, g_dash_dz));
+        // Keep Dante facing strictly in the dash direction throughout the dash
+        float facing_angle = std::atan2(g_dash_dx, g_dash_dz);
+        write_f32(body + kFacingRva, facing_angle);
+        write_f32(body + 0x1928, facing_angle);
+        write_f32(body + 0x1A28, facing_angle);
 
         float cur_x = read_f32(body + kPosBaseRva);
         float cur_y = read_f32(body + kPosBaseRva + 4);
@@ -657,18 +679,19 @@ void trickster_update() {
 
         write_horizontal_coords(body, next_x, next_z);
 
+        // Update velocity vector in the actor
+        write_f32(body + 0x1F0, g_dash_dx * speed);
+        write_f32(body + 0x1F4, 0.0f);
+        write_f32(body + 0x1F8, g_dash_dz * speed);
+
         // Keep visual Y aligned with base Y for level, seamless gliding
         write_f32(body + kPosVisualRva + 4, cur_y);
 
-        // Spawn 3D crimson streak and black aura attached directly to Dante in world space
-        if (g_dash_timer % 2 == 0) {
-            play_effect_at(next_x, cur_y + 45.0f, next_z, kEffectColorStreak, 220.0f, 25.0f, 35.0f, 210.0f);
-            play_effect_at(next_x, cur_y + 60.0f, next_z, kEffectColorAura, 0.0f, 0.0f, 0.0f, 230.0f);
-            play_effect_at(next_x, cur_y + 40.0f, next_z, kEffectDashWhoosh);
-        }
-
+        // Spawn 3D world particles attached directly to Dante in world space
         if (g_dash_timer % 3 == 0) {
+            play_effect_at(next_x, cur_y + 35.0f, next_z, kEffectEvasionWind);
             play_effect_at(next_x, cur_y, next_z, kEffectGroundDust);
+            play_effect_at(next_x, cur_y + 40.0f, next_z, kEffectDashWhoosh);
         }
 
         g_dash_timer--;
@@ -682,7 +705,11 @@ void trickster_update() {
 
             // Restore visual Y to base Y
             write_f32(body + kPosVisualRva + 4, cur_y);
-            body[0x17A4] = 0;
+            body[0x17A4] = 0; // Release uninterruptible lock
+
+            // Clear horizontal velocity
+            write_f32(body + 0x1F0, 0.0f);
+            write_f32(body + 0x1F8, 0.0f);
 
             // Seamless transition check
             bool input_held = is_movement_input_held();
@@ -691,12 +718,12 @@ void trickster_update() {
                 // Instantly flow from slide into full running sprint
                 *reinterpret_cast<uint16_t*>(body) = 0x0001; // Action 1, Subaction 0: Run
                 body[2] = 1;
-                play_actor_motion(body, kMotionRun);
+                play_actor_motion(body, kMotionRun, 4);
             } else {
                 // Smoothly finish slide into standing idle without any freeze or pop
                 *reinterpret_cast<uint16_t*>(body) = 0x0000; // Action 0: Idle
                 body[2] = 0;
-                play_actor_motion(body, kMotionIdle);
+                play_actor_motion(body, kMotionIdle, 4);
             }
         }
     }
@@ -709,6 +736,9 @@ void trickster_update() {
             // Restore HP negated during dash
             *reinterpret_cast<uint16_t*>(body + kHpRva) = g_protected_hp;
             *reinterpret_cast<uint16_t*>(body + kHpDisplayRva) = g_protected_hp;
+        }
+        if (g_iframe_timer == 0 && g_dash_timer == 0) {
+            body[0x17A4] = 0;
         }
     }
 }

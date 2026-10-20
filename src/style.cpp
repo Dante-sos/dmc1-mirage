@@ -40,14 +40,10 @@ HRESULT __fastcall hook_get_device_state(void* this_ptr, DWORD cbData, void* lpv
         keys[0x2E] = 0; // DIK_C (Gunslinger)
         keys[0x2F] = 0; // DIK_V (RoyalGuard)
 
-        // When performing a style action, suppress attack/fire keys and movement keys so dash takes priority
+        // When performing a style action, suppress attack/fire keys so dash takes priority
         if (style_in_action()) {
             keys[0x24] = 0; // DIK_J (Melee attack)
             keys[0x17] = 0; // DIK_I (Devil trigger)
-            keys[0x11] = 0; // DIK_W
-            keys[0x1E] = 0; // DIK_A
-            keys[0x1F] = 0; // DIK_S
-            keys[0x20] = 0; // DIK_D
         }
     }
     return hr;
@@ -179,14 +175,12 @@ void style_on_pad(XInputState* state) {
         if (action_pressed) {
             trickster_request_action(state);
         }
-        // Consume B, Square (shoot), Melee (Y), Right Trigger, and Left Stick so running doesn't conflict with dash
+        // Consume B, Square (shoot), Melee (Y), and Right Trigger so style action has clean input
         if (action_held || key_l_held || trickster_is_dashing()) {
             state->gamepad.buttons &= ~kButtonB;
             state->gamepad.buttons &= ~kButtonX;
             state->gamepad.buttons &= ~kButtonY;
             state->gamepad.rightTrigger = 0;
-            state->gamepad.leftX = 0;
-            state->gamepad.leftY = 0;
         }
     }
 }
