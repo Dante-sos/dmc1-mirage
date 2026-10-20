@@ -38,3 +38,4 @@ void mod_log(const char* fmt, ...);
 void overlay_install();
 void overlay_on_pad(XInputState* state);
 void mod_release_hold();
+void mod_open_load_menu();

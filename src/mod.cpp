@@ -58,6 +58,7 @@ std::atomic<int> g_pending_mode{3};
 std::atomic<bool> g_mission_staged{false};
 std::atomic<bool> g_start_requested{false};
 std::atomic<bool> g_hold_event{false};
+std::atomic<bool> g_event_hold_enabled{true};
 bool g_logged_title_loop = false;
 bool g_logged_event_loop = false;
 DWORD g_stage_tick = 0;
@@ -434,15 +435,16 @@ extern "C" void apply_pending_at_event() {
     if (!event) {
         return;
     }
-    if (g_start_requested.load() && (g_hold_event.load() || event[0] == 0)) {
+    if (g_start_requested.load()) {
         stage_chosen_mission();
         event[0] = 1; // Event State 1: Launches directly into mission, skipping opening cutscene!
+        g_event_hold_enabled.store(false);
         g_hold_event.store(false);
         g_start_requested.store(false);
         log_line("event loop launch %d directly into mission (skipped intro)", g_pending_mission.load());
         return;
     }
-    if (event[0] == 0 && !g_start_requested.load()) {
+    if (event[0] == 0 && !g_start_requested.load() && g_event_hold_enabled.load()) {
         event[0] = 4;
         g_hold_event.store(true);
     }
@@ -669,21 +671,28 @@ void mod_arm_mission(int mission, int mode) {
 }
 
 void mod_begin_mission() {
-    auto slot = reinterpret_cast<uint8_t**>(g_base + kMenuConfigPtrRva);
-    uint8_t* config = slot ? *slot : nullptr;
-    if (!config) {
-        log_line("mission start missing menu");
-        return;
-    }
     int mission = g_pending_mission.load();
     int mode = g_pending_mode.load();
     if (mission < 1) {
         return;
     }
-    config[0x10] = static_cast<uint8_t>(mission);
-    config[0x0B] = static_cast<uint8_t>(mode);
+    auto slot = reinterpret_cast<uint8_t**>(g_base + kMenuConfigPtrRva);
+    uint8_t* config = slot ? *slot : nullptr;
+    if (config) {
+        config[0x10] = static_cast<uint8_t>(mission);
+        config[0x0B] = static_cast<uint8_t>(mode);
+        config[0x0D] = 0;
+        *reinterpret_cast<uint32_t*>(config) = 6; // State 6: Directly triggers DMC1 mission launch!
+        log_line("mission start %d mode %d (state 6 triggered)", mission, mode);
+    } else {
+        log_line("mission start %d mode %d missing menu config", mission, mode);
+    }
+    if (in_game()) {
+        force_pending_mission(true);
+        stage_chosen_mission();
+    }
     g_start_requested.store(true);
-    log_line("mission start %d mode %d", mission, mode);
+    g_event_hold_enabled.store(false);
 }
 
 void mod_clear_mission() {
@@ -692,12 +701,27 @@ void mod_clear_mission() {
 }
 
 void mod_release_hold() {
+    g_event_hold_enabled.store(false);
+    g_hold_event.store(false);
     uint8_t* event = event_data();
-    if (event) {
+    if (event && event[0] == 4) {
         event[0] = 0;
     }
-    g_hold_event.store(false);
     log_line("mod event hold released");
+}
+
+void mod_open_load_menu() {
+    auto slot = reinterpret_cast<uint8_t**>(g_base + kMenuConfigPtrRva);
+    uint8_t* config = slot ? *slot : nullptr;
+    if (!config) {
+        log_line("open load menu missing menu config");
+        return;
+    }
+    *reinterpret_cast<uint32_t*>(config) = 11; // State 11: Native DMC1 Save / Load menu!
+    config[1] = 0;
+    config[0x0D] = 0;
+    g_event_hold_enabled.store(false);
+    log_line("opened native save/load menu (state 11)");
 }
 
 int mod_armed_mission() {

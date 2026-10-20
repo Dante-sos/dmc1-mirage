@@ -1538,18 +1538,24 @@ void update_menu_input() {
             switch (g_launcher_index) {
                 case 0: // LOAD DATA
                     g_launcher_dismissed = true;
+                    mod_clear_mission();
                     mod_release_hold();
-                    begin_load_seek();
+                    mod_open_load_menu();
                     g_screen = Screen::None;
+                    g_capture.store(false);
+                    g_wait_release.store(true);
                     break;
                 case 1: // MISSION SELECT
                     g_screen = Screen::Missions;
+                    g_menu_lock = 12;
                     break;
                 case 2: // BOSS RUSH
                     g_screen = Screen::BossRush;
+                    g_menu_lock = 10;
                     break;
                 case 3: // SETTINGS
                     g_screen = Screen::Settings;
+                    g_menu_lock = 10;
                     break;
                 case 4: // START GAME
                     g_launcher_dismissed = true;
@@ -1570,6 +1576,7 @@ void update_menu_input() {
     if (g_screen == Screen::BossRush) {
         if (close || confirm) {
             g_screen = Screen::Launcher;
+            g_menu_lock = 10;
         }
         return;
     }
@@ -1592,6 +1599,7 @@ void update_menu_input() {
         }
         if (close) {
             g_screen = Screen::Launcher;
+            g_menu_lock = 10;
         }
         return;
     }
@@ -1623,6 +1631,7 @@ void update_menu_input() {
     }
     if (close) {
         g_screen = Screen::Launcher;
+        g_menu_lock = 10;
     }
 }
 
