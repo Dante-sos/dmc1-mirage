@@ -13,12 +13,15 @@ constexpr uintptr_t kPosTargetRva = 0x1AC0;
 constexpr uintptr_t kFacingRva = 0x124;
 constexpr uintptr_t kHpRva = 0x1BC8;
 constexpr uintptr_t kHpDisplayRva = 0x17A2;
+constexpr uintptr_t kEnemyActiveRva = 0x1C20;
 constexpr uintptr_t kEnemyTargetRva = 0x1C18;
+constexpr uintptr_t kEnemyCountRva = 0x4CB6BA0;
+constexpr uintptr_t kEnemyArrayRva = 0x4CB6BB0;
 constexpr uintptr_t kShootTimerRva = 0x1C05;
 
 constexpr int kDashFrames = 10;
 constexpr int kDashCooldownFrames = 12;
-constexpr int kWarpCooldownFrames = 20;
+constexpr int kWarpCooldownFrames = 18;
 
 int g_dash_timer = 0;
 int g_cooldown = 0;
@@ -27,8 +30,10 @@ uint16_t g_protected_hp = 0;
 
 float g_dash_dx = 0.0f;
 float g_dash_dz = 0.0f;
-float g_last_dash_x = 0.0f;
-float g_last_dash_z = 0.0f;
+float g_prev_step_x = 0.0f;
+float g_prev_step_z = 0.0f;
+int g_blocked_frames = 0;
+
 bool g_is_air_dash = false;
 bool g_sky_star_used = false;
 const char* g_active_action_name = "";
@@ -64,17 +69,106 @@ void clear_shoot_state(uint8_t* body) {
     }
 }
 
+bool is_valid_living_enemy(uint8_t* e, uint8_t* player) {
+    if (!e || e == player) {
+        return false;
+    }
+    auto ptr_val = reinterpret_cast<uintptr_t>(e);
+    if (ptr_val < 0x10000 || ptr_val > 0x7FFFFFFFFFFFull || (ptr_val & 7) != 0) {
+        return false;
+    }
+    MEMORY_BASIC_INFORMATION mbi{};
+    if (VirtualQuery(e, &mbi, sizeof(mbi)) != sizeof(mbi) || mbi.State != MEM_COMMIT || (mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD))) {
+        return false;
+    }
+    uint16_t hp = *reinterpret_cast<const uint16_t*>(e + kHpRva);
+    if (hp == 0 || hp > 65000) {
+        return false;
+    }
+    float x = read_f32(e + kPosBaseRva);
+    float y = read_f32(e + kPosBaseRva + 4);
+    float z = read_f32(e + kPosBaseRva + 8);
+    if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)) {
+        return false;
+    }
+    return true;
+}
+
+uint8_t* find_target_enemy(uint8_t* body) {
+    if (!body) {
+        return nullptr;
+    }
+
+    // 1. Primary active lock-on target
+    auto* target = *reinterpret_cast<uint8_t**>(body + kEnemyActiveRva);
+    if (is_valid_living_enemy(target, body)) {
+        return target;
+    }
+
+    // 2. Secondary attack target
+    target = *reinterpret_cast<uint8_t**>(body + kEnemyTargetRva);
+    if (is_valid_living_enemy(target, body)) {
+        return target;
+    }
+
+    // 3. Scan the room's active enemy table for the closest living enemy in front of Dante
+    uintptr_t base = mod_base();
+    if (base) {
+        int32_t count = *reinterpret_cast<int32_t*>(base + kEnemyCountRva);
+        auto** enemy_list = reinterpret_cast<uint8_t**>(base + kEnemyArrayRva);
+        if (count > 0 && count <= 64 && enemy_list) {
+            float cur_x = read_f32(body + kPosBaseRva);
+            float cur_z = read_f32(body + kPosBaseRva + 8);
+            float facing = read_f32(body + kFacingRva);
+            float f_dx = std::sin(facing);
+            float f_dz = std::cos(facing);
+
+            uint8_t* best = nullptr;
+            float best_dist = 4000.0f;
+
+            for (int i = 0; i < count; ++i) {
+                uint8_t* e = enemy_list[i];
+                if (!is_valid_living_enemy(e, body)) {
+                    continue;
+                }
+
+                float ex = read_f32(e + kPosBaseRva);
+                float ez = read_f32(e + kPosBaseRva + 8);
+                float dx = ex - cur_x;
+                float dz = ez - cur_z;
+                float dist = std::hypot(dx, dz);
+                if (dist < 40.0f || dist > 3500.0f) {
+                    continue;
+                }
+
+                float dir_x = dx / dist;
+                float dir_z = dz / dist;
+                float dot = dir_x * f_dx + dir_z * f_dz;
+
+                // Prioritize enemies roughly in front of Dante
+                if (dot > -0.2f && dist < best_dist) {
+                    best_dist = dist;
+                    best = e;
+                }
+            }
+            if (best) {
+                return best;
+            }
+        }
+    }
+    return nullptr;
+}
+
 float get_dash_speed(int step) {
-    // Punchy burst that eases out smoothly.
-    // Peak at 38 units/frame, safely below Dante's 64-unit collision capsule radius
-    // so DMC1's room collision engine resolves boundaries and never tunnels through pillars/walls.
+    // 10 frame burst: 55 -> 40 -> 25 units/frame (total ~400 units).
+    // Fast, responsive, stylish dash that covers substantial ground.
     if (step <= 3) {
-        return 38.0f;
+        return 55.0f;
     }
     if (step <= 7) {
-        return 28.0f;
+        return 40.0f;
     }
-    return 16.0f;
+    return 25.0f;
 }
 
 }  // namespace
@@ -86,8 +180,9 @@ void trickster_init() {
     g_protected_hp = 0;
     g_dash_dx = 0.0f;
     g_dash_dz = 0.0f;
-    g_last_dash_x = 0.0f;
-    g_last_dash_z = 0.0f;
+    g_prev_step_x = 0.0f;
+    g_prev_step_z = 0.0f;
+    g_blocked_frames = 0;
     g_is_air_dash = false;
     g_sky_star_used = false;
     g_active_action_name = "";
@@ -155,23 +250,27 @@ void trickster_on_action(XInputState* state) {
     // Record HP for i-frames invulnerability
     g_protected_hp = *reinterpret_cast<uint16_t*>(body + kHpRva);
 
+    bool forward_pressed = stick_y > 5000;
+    bool back_pressed = stick_y < -5000;
+
     // 1. Air Trick (Forward Warp) -> Lock-on + Forward + Style Action
-    if (lock_on && stick_y > 10000) {
+    if (lock_on && forward_pressed) {
         float cur_x = read_f32(body + kPosBaseRva);
         float cur_y = read_f32(body + kPosBaseRva + 4);
         float cur_z = read_f32(body + kPosBaseRva + 8);
 
-        // If an enemy is locked on, warp directly to the front of the enemy
-        auto* enemy = *reinterpret_cast<uint8_t**>(body + kEnemyTargetRva);
+        // Find locked-on or nearest living enemy
+        uint8_t* enemy = find_target_enemy(body);
         if (enemy) {
             float ex = read_f32(enemy + kPosBaseRva);
             float ey = read_f32(enemy + kPosBaseRva + 4);
             float ez = read_f32(enemy + kPosBaseRva + 8);
             float edx = ex - cur_x;
             float edz = ez - cur_z;
-            float edist = std::sqrt(edx * edx + edz * edz);
-            if (edist > 80.0f && edist < 1400.0f) {
-                float stop_dist = edist - 110.0f;
+            float edist = std::hypot(edx, edz);
+            if (edist > 60.0f) {
+                // Warp directly in front of the enemy (85 units: point blank melee range)
+                float stop_dist = edist > 85.0f ? (edist - 85.0f) : 0.0f;
                 float target_x = cur_x + (edx / edist) * stop_dist;
                 float target_z = cur_z + (edz / edist) * stop_dist;
                 float target_y = ey;
@@ -181,13 +280,13 @@ void trickster_on_action(XInputState* state) {
                 g_iframe_timer = 12;
                 g_cooldown = kWarpCooldownFrames;
                 g_active_action_name = "AIR TRICK";
-                mod_log("trickster: Air Trick target warp to enemy dist=%.1f", edist);
+                mod_log("trickster: Air Trick warped directly to enemy dist=%.1f", edist);
                 return;
             }
         }
 
-        // Safe unconstrained warp distance (320 units avoids overshooting into room mesh)
-        float warp_dist = 320.0f;
+        // If no enemy is targeted or nearby, warp forward 850 units across the room
+        float warp_dist = 850.0f;
         float target_x = cur_x + std::sin(facing) * warp_dist;
         float target_z = cur_z + std::cos(facing) * warp_dist;
 
@@ -195,18 +294,17 @@ void trickster_on_action(XInputState* state) {
         g_iframe_timer = 10;
         g_cooldown = kWarpCooldownFrames;
         g_active_action_name = "AIR TRICK";
-        mod_log("trickster: Air Trick forward warp %.1f", warp_dist);
+        mod_log("trickster: Air Trick forward warp %.1f (no target)", warp_dist);
         return;
     }
 
     // 2. Trick Down (Retreat Warp) -> Lock-on + Back + Style Action
-    if (lock_on && stick_y < -10000) {
+    if (lock_on && back_pressed) {
         float cur_x = read_f32(body + kPosBaseRva);
         float cur_y = read_f32(body + kPosBaseRva + 4);
         float cur_z = read_f32(body + kPosBaseRva + 8);
 
-        // Safe retreat distance (260 units avoids embedding into rear walls)
-        float warp_dist = 260.0f;
+        float warp_dist = 500.0f;
         float target_x = cur_x - std::sin(facing) * warp_dist;
         float target_z = cur_z - std::cos(facing) * warp_dist;
 
@@ -231,8 +329,9 @@ void trickster_on_action(XInputState* state) {
 
         g_dash_dx = std::sin(facing);
         g_dash_dz = std::cos(facing);
-        g_last_dash_x = read_f32(body + kPosBaseRva);
-        g_last_dash_z = read_f32(body + kPosBaseRva + 8);
+        g_prev_step_x = read_f32(body + kPosBaseRva);
+        g_prev_step_z = read_f32(body + kPosBaseRva + 8);
+        g_blocked_frames = 0;
         g_active_action_name = "SKY STAR";
         mod_log("trickster: Sky Star air dash facing=%.2f", facing);
         return;
@@ -246,8 +345,9 @@ void trickster_on_action(XInputState* state) {
 
     g_dash_dx = std::sin(facing);
     g_dash_dz = std::cos(facing);
-    g_last_dash_x = read_f32(body + kPosBaseRva);
-    g_last_dash_z = read_f32(body + kPosBaseRva + 8);
+    g_prev_step_x = read_f32(body + kPosBaseRva);
+    g_prev_step_z = read_f32(body + kPosBaseRva + 8);
+    g_blocked_frames = 0;
     g_active_action_name = "DASH";
     mod_log("trickster: Dash started facing=%.2f", facing);
 }
@@ -279,28 +379,30 @@ void trickster_update() {
         float cur_x = read_f32(body + kPosBaseRva);
         float cur_z = read_f32(body + kPosBaseRva + 8);
 
-        // Wall / Pillar contact detection: if previous frame movement was blocked by geometry,
-        // stop the dash immediately to prevent pushing inside solid meshes.
-        if (g_dash_timer < kDashFrames) {
-            float moved_dx = cur_x - g_last_dash_x;
-            float moved_dz = cur_z - g_last_dash_z;
-            float actual_move = std::sqrt(moved_dx * moved_dx + moved_dz * moved_dz);
-            if (actual_move < 1.5f) {
-                // Dante made contact with solid geometry; end dash cleanly
-                g_dash_timer = 0;
-                g_is_air_dash = false;
-                return;
+        // Wall / Pillar contact detection:
+        // Only if Dante's position was clamped and made virtually zero progress for 2 consecutive frames,
+        // stop the dash cleanly against the wall surface.
+        if (g_dash_timer < kDashFrames - 1) {
+            float dist_moved = std::hypot(cur_x - g_prev_step_x, cur_z - g_prev_step_z);
+            if (dist_moved < 1.0f) {
+                if (++g_blocked_frames >= 2) {
+                    g_dash_timer = 0;
+                    g_is_air_dash = false;
+                    g_blocked_frames = 0;
+                    return;
+                }
+            } else {
+                g_blocked_frames = 0;
             }
         }
+        g_prev_step_x = cur_x;
+        g_prev_step_z = cur_z;
 
         int step = (kDashFrames - g_dash_timer) + 1;
         float speed = get_dash_speed(step);
 
         float next_x = cur_x + g_dash_dx * speed;
         float next_z = cur_z + g_dash_dz * speed;
-
-        g_last_dash_x = next_x;
-        g_last_dash_z = next_z;
 
         if (g_is_air_dash) {
             // Keep height during Sky Star to create the hover/glide feel
