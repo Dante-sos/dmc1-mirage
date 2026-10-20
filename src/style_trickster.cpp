@@ -31,9 +31,10 @@ constexpr uintptr_t kGetEffectInstanceRva = 0x820D0;
 constexpr uint32_t kMotionIdle = 0;
 constexpr uint32_t kMotionWalk = 1;
 constexpr uint32_t kMotionRun = 2;
-constexpr uint32_t kMotionRoll = 0x24;      // 36 decimal: authentic evasive roll/dash
-constexpr uint32_t kMotionBackflip = 0x1D;  // 29 decimal: authentic backflip/retreat
-constexpr uint32_t kMotionStinger = 0x523;  // Stinger forward thrust
+constexpr uint32_t kMotionDashSlide = 0x7C;  // 124 decimal: authentic low-stance skate slide (subaction 0x17)
+constexpr uint32_t kMotionSkidTurn = 0x2B;   // 43 decimal: alternative low crouch slide
+constexpr uint32_t kMotionBackflip = 0x1D;   // 29 decimal: authentic backflip/retreat
+constexpr uint32_t kMotionStinger = 0x523;   // Stinger forward thrust
 
 // Game audio/particle effect IDs
 constexpr uintptr_t kMotionTrailRva = 0x56383B;
@@ -64,6 +65,8 @@ uint16_t g_protected_hp = 0;
 int g_action_buffer = 0;
 bool g_has_buffered_pad = false;
 XInputState g_buffered_pad_state{};
+bool g_has_live_pad = false;
+XInputState g_live_pad_state{};
 
 float g_dash_dx = 0.0f;
 float g_dash_dz = 0.0f;
@@ -94,8 +97,36 @@ void play_actor_motion(uint8_t* body, uint32_t motion_id) {
         return;
     }
 
+    uint32_t full_id = motion_id;
+    if (motion_id <= 0xFF) {
+        full_id = 0x0A00 | motion_id; // Blend mode 0x0A for smooth transitional animation
+    }
+
     auto play_fn = reinterpret_cast<ActorPlayMotionFn>(base + kActorPlayMotionRva);
-    play_fn(body, motion_table, motion_id, 1, 0x100);
+    play_fn(body, motion_table, full_id, 1, 0x100);
+}
+
+bool is_movement_input_held() {
+    if ((GetAsyncKeyState('W') & 0x8000) != 0 || (GetAsyncKeyState('S') & 0x8000) != 0 ||
+        (GetAsyncKeyState('A') & 0x8000) != 0 || (GetAsyncKeyState('D') & 0x8000) != 0 ||
+        (GetAsyncKeyState(VK_UP) & 0x8000) != 0 || (GetAsyncKeyState(VK_DOWN) & 0x8000) != 0 ||
+        (GetAsyncKeyState(VK_LEFT) & 0x8000) != 0 || (GetAsyncKeyState(VK_RIGHT) & 0x8000) != 0) {
+        return true;
+    }
+    if (g_has_live_pad) {
+        SHORT sx = g_live_pad_state.gamepad.leftX;
+        SHORT sy = g_live_pad_state.gamepad.leftY;
+        if (std::abs(sx) > 7000 || std::abs(sy) > 7000) {
+            return true;
+        }
+    } else if (g_has_buffered_pad) {
+        SHORT sx = g_buffered_pad_state.gamepad.leftX;
+        SHORT sy = g_buffered_pad_state.gamepad.leftY;
+        if (std::abs(sx) > 7000 || std::abs(sy) > 7000) {
+            return true;
+        }
+    }
+    return false;
 }
 
 void play_effect_at(float x, float y, float z, uint32_t effect_id, float r = -1.0f, float g = 0.0f, float b = 0.0f, float a = 255.0f) {
@@ -367,6 +398,9 @@ void trickster_execute_action() {
                 play_effect_at(target_x, ey, target_z, kEffectLightningSparks);
                 play_effect_at(target_x, ey, target_z, kEffectColorStreak, 240.0f, 30.0f, 70.0f, 240.0f);
 
+                *reinterpret_cast<uint16_t*>(body) = 0x0001;
+                body[2] = 1;
+                body[0x17A4] = 0;
                 play_actor_motion(body, kMotionStinger);
 
                 g_iframe_timer = 12;
@@ -393,6 +427,9 @@ void trickster_execute_action() {
         play_effect_at(target_x, cur_y, target_z, kEffectLightningSparks);
         play_effect_at(target_x, cur_y, target_z, kEffectColorStreak, 240.0f, 30.0f, 70.0f, 240.0f);
 
+        *reinterpret_cast<uint16_t*>(body) = 0x0001;
+        body[2] = 1;
+        body[0x17A4] = 0;
         play_actor_motion(body, kMotionStinger);
 
         g_iframe_timer = 10;
@@ -418,6 +455,9 @@ void trickster_execute_action() {
         play_effect_at(target_x, cur_y, target_z, kEffectSparkStreak);
         play_effect_at(target_x, cur_y, target_z, kEffectColorStreak, 0.0f, 0.0f, 0.0f, 220.0f);
 
+        *reinterpret_cast<uint16_t*>(body) = 0x0001;
+        body[2] = 1;
+        body[0x17A4] = 0;
         play_actor_motion(body, kMotionBackflip);
 
         g_iframe_timer = 12;
@@ -457,16 +497,18 @@ void trickster_execute_action() {
     write_f32(body + 0x218, 0.0f);
     write_f32(body + 0x21C, 1.0f);
 
-    // Set player state machine to evasion roll (Group 1, Subaction 1, Step 1)
-    *reinterpret_cast<uint16_t*>(body) = 0x0101;
+    // Set player state machine to ground locomotion slide (Category 1, Subaction 0x17 = Skid Stop)
+    // Clear lockout flag (0x17A4 = 0) so controls and state are never frozen for 1 second!
+    *reinterpret_cast<uint16_t*>(body) = 0x1701;
     body[2] = 1;
-    body[0x17A4] = 0x80;
+    body[0x17A4] = 0;
 
-    play_actor_motion(body, kMotionRoll);
+    // Trigger authentic DMC3-style low skate slide motion
+    play_actor_motion(body, kMotionDashSlide);
 
     // 3D particles directly at Dante's body in world space
-    play_effect_at(cur_x, cur_y + 60.0f, cur_z, kEffectColorAura, 0.0f, 0.0f, 0.0f, 240.0f);
-    play_effect_at(cur_x, cur_y + 60.0f, cur_z, kEffectColorStreak, 0.0f, 0.0f, 0.0f, 240.0f);
+    play_effect_at(cur_x, cur_y + 45.0f, cur_z, kEffectColorStreak, 220.0f, 25.0f, 35.0f, 210.0f);
+    play_effect_at(cur_x, cur_y + 60.0f, cur_z, kEffectColorAura, 0.0f, 0.0f, 0.0f, 230.0f);
     play_effect_at(cur_x, cur_y + 40.0f, cur_z, kEffectDashWhoosh);
     play_effect_at(cur_x, cur_y, cur_z, kEffectGroundDust);
 
@@ -481,6 +523,7 @@ void trickster_init() {
     if (body) {
         *reinterpret_cast<uint16_t*>(body + 0x0E) &= ~0x4000;
         *reinterpret_cast<int32_t*>(body + 0x1a88) = 0;
+        body[0x17A4] = 0;
     }
     uintptr_t base = mod_base();
     if (base) {
@@ -492,10 +535,21 @@ void trickster_init() {
     g_protected_hp = 0;
     g_action_buffer = 0;
     g_has_buffered_pad = false;
+    g_has_live_pad = false;
     std::memset(&g_buffered_pad_state, 0, sizeof(g_buffered_pad_state));
+    std::memset(&g_live_pad_state, 0, sizeof(g_live_pad_state));
     g_dash_dx = 0.0f;
     g_dash_dz = 0.0f;
     g_active_action_name = "";
+}
+
+void trickster_feed_pad_state(const XInputState* state) {
+    if (state) {
+        g_live_pad_state = *state;
+        g_has_live_pad = true;
+    } else {
+        g_has_live_pad = false;
+    }
 }
 
 bool trickster_is_dashing() {
@@ -522,12 +576,17 @@ void trickster_request_action(const XInputState* state) {
     if (state) {
         g_buffered_pad_state = *state;
         g_has_buffered_pad = true;
+        g_live_pad_state = *state;
+        g_has_live_pad = true;
     } else {
         g_has_buffered_pad = false;
+        g_has_live_pad = false;
     }
 
-    if (g_dash_timer == 0 && g_cooldown == 0) {
+    // Cancel recovery into next dash or start new dash immediately
+    if (g_dash_timer <= 4 && g_cooldown == 0) {
         g_action_buffer = 0;
+        g_dash_timer = 0;
         trickster_execute_action();
     }
 }
@@ -578,9 +637,13 @@ void trickster_update() {
             *reinterpret_cast<uint8_t*>(base + kMotionTrailRva) |= 0x18;
         }
 
-        // Maintain evasive roll state in DMC1 player state machine so engine never resets Dante to idle
-        *reinterpret_cast<uint16_t*>(body) = 0x0101;
+        // Maintain ground slide state and ensure lockout flag remains 0
+        *reinterpret_cast<uint16_t*>(body) = 0x1701;
         body[2] = 1;
+        body[0x17A4] = 0;
+
+        // Keep Dante facing strictly in the dash direction throughout the slide
+        write_f32(body + kFacingRva, std::atan2(g_dash_dx, g_dash_dz));
 
         float cur_x = read_f32(body + kPosBaseRva);
         float cur_y = read_f32(body + kPosBaseRva + 4);
@@ -594,10 +657,18 @@ void trickster_update() {
 
         write_horizontal_coords(body, next_x, next_z);
 
-        // Spawn 3D black aura and streak particles attached directly to Dante's active world position
+        // Lower visual Y slightly during the high-speed glide
+        // to produce the deep skate crouch shown in the reference image
+        if (g_dash_timer > 4) {
+            write_f32(body + kPosVisualRva + 4, cur_y - 8.0f);
+        } else {
+            write_f32(body + kPosVisualRva + 4, cur_y);
+        }
+
+        // Spawn 3D crimson streak and black aura attached directly to Dante in world space
         if (g_dash_timer % 2 == 0) {
-            play_effect_at(next_x, cur_y + 60.0f, next_z, kEffectColorAura, 0.0f, 0.0f, 0.0f, 240.0f);
-            play_effect_at(next_x, cur_y + 60.0f, next_z, kEffectColorStreak, 0.0f, 0.0f, 0.0f, 240.0f);
+            play_effect_at(next_x, cur_y + 45.0f, next_z, kEffectColorStreak, 220.0f, 25.0f, 35.0f, 210.0f);
+            play_effect_at(next_x, cur_y + 60.0f, next_z, kEffectColorAura, 0.0f, 0.0f, 0.0f, 230.0f);
             play_effect_at(next_x, cur_y + 40.0f, next_z, kEffectDashWhoosh);
         }
 
@@ -614,29 +685,22 @@ void trickster_update() {
                 *reinterpret_cast<uint8_t*>(base + kMotionTrailRva) &= ~0x18;
             }
 
-            // Restore normal ground locomotion state
-            *reinterpret_cast<uint16_t*>(body) = 0x0000;
-            body[2] = 0;
+            // Restore visual Y to base Y
+            write_f32(body + kPosVisualRva + 4, cur_y);
+            body[0x17A4] = 0;
 
-            // Seamless transition
-            bool input_held = false;
-            if ((GetAsyncKeyState('W') & 0x8000) != 0 || (GetAsyncKeyState('S') & 0x8000) != 0 ||
-                (GetAsyncKeyState('A') & 0x8000) != 0 || (GetAsyncKeyState('D') & 0x8000) != 0 ||
-                (GetAsyncKeyState(VK_UP) & 0x8000) != 0 || (GetAsyncKeyState(VK_DOWN) & 0x8000) != 0 ||
-                (GetAsyncKeyState(VK_LEFT) & 0x8000) != 0 || (GetAsyncKeyState(VK_RIGHT) & 0x8000) != 0) {
-                input_held = true;
-            }
-            if (g_has_buffered_pad) {
-                SHORT sx = g_buffered_pad_state.gamepad.leftX;
-                SHORT sy = g_buffered_pad_state.gamepad.leftY;
-                if (std::abs(sx) > 7000 || std::abs(sy) > 7000) {
-                    input_held = true;
-                }
-            }
+            // Seamless transition check
+            bool input_held = is_movement_input_held();
 
             if (input_held) {
+                // Instantly flow from slide into full running sprint
+                *reinterpret_cast<uint16_t*>(body) = 0x0001; // Action 1, Subaction 0: Run
+                body[2] = 1;
                 play_actor_motion(body, kMotionRun);
             } else {
+                // Smoothly finish slide into standing idle without any freeze or pop
+                *reinterpret_cast<uint16_t*>(body) = 0x0000; // Action 0: Idle
+                body[2] = 0;
                 play_actor_motion(body, kMotionIdle);
             }
         }

@@ -5,6 +5,7 @@
 struct XInputState;
 
 void trickster_init();
+void trickster_feed_pad_state(const XInputState* state);
 void trickster_request_action(const XInputState* state);
 void trickster_on_action(XInputState* state);
 void trickster_update();

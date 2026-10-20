@@ -173,6 +173,9 @@ void style_on_pad(XInputState* state) {
     bool key_l_held = (GetAsyncKeyState('L') & 0x8000) != 0;
 
     if (g_active_style == StyleType::Trickster) {
+        if (state) {
+            trickster_feed_pad_state(state);
+        }
         if (action_pressed) {
             trickster_request_action(state);
         }
