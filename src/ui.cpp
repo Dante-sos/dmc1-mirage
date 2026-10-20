@@ -569,19 +569,6 @@ void push_quad(std::vector<Vertex>& verts, float x, float y, float w, float h, f
     verts.insert(verts.end(), q, q + 6);
 }
 
-void push_slanted_quad(std::vector<Vertex>& verts, float x0, float y0, float x1, float y1, float x2, float y2, float x3, float y3, float r, float g, float b, float a) {
-    float u = 4.0f / static_cast<float>(kAtlas);
-    Vertex q[6] = {
-        {x0, y0, u, u, r, g, b, a},
-        {x1, y1, u, u, r, g, b, a},
-        {x2, y2, u, u, r, g, b, a},
-        {x2, y2, u, u, r, g, b, a},
-        {x3, y3, u, u, r, g, b, a},
-        {x0, y0, u, u, r, g, b, a},
-    };
-    verts.insert(verts.end(), q, q + 6);
-}
-
 void draw_rect(std::vector<Vertex>& verts, float x, float y, float w, float h, float r, float g, float b, float a) {
     float u = 4.0f / static_cast<float>(kAtlas);
     push_quad(verts, x, y, w, h, u, u, u, u, r, g, b, a);
@@ -865,129 +852,12 @@ void draw_style_hud(float width, float height) {
     submit(verts, width, height, 0.0f, g_font_view);
 }
 
-void draw_dash_black_trail(float width, float height) {
-    int timer = trickster_dash_timer();
-    if (timer <= 0) {
-        return;
-    }
-
-    std::vector<Vertex> verts;
-    verts.reserve(512);
-
-    float intensity = static_cast<float>(timer) / 16.0f; // 1.0 down to ~0.06
-    int step = 16 - timer; // 0 to 15 (progress)
-
-    float ddx = 0.0f, ddz = 0.0f;
-    trickster_dash_direction(ddx, ddz);
-
-    // 1. Full-screen Edge Vignette Pulse (darkens the screen perimeter with pitch black shadow)
-    float vignette_alpha = intensity * 0.45f;
-    float edge_thick_h = height * 0.12f;
-    float edge_thick_w = width * 0.10f;
-    // Top border
-    draw_rect(verts, 0, 0, width, edge_thick_h, 0.0f, 0.0f, 0.0f, vignette_alpha * 0.9f);
-    // Bottom border
-    draw_rect(verts, 0, height - edge_thick_h, width, edge_thick_h, 0.0f, 0.0f, 0.0f, vignette_alpha * 0.9f);
-    // Left border
-    draw_rect(verts, 0, 0, edge_thick_w, height, 0.0f, 0.0f, 0.0f, vignette_alpha * 0.7f);
-    // Right border
-    draw_rect(verts, width - edge_thick_w, 0, edge_thick_w, height, 0.0f, 0.0f, 0.0f, vignette_alpha * 0.7f);
-
-    // 2. High-speed Jet Black Speed Slash Streaks (DMC3 Trickster Black Trail)
-    // Dynamic angle depending on dash direction
-    float dir_slant = ddx * 220.0f; // Slant streaks horizontally based on dash movement
-    if (std::abs(ddx) < 0.1f) {
-        dir_slant = (ddz < 0.0f ? -60.0f : 60.0f); // Forward vs backward slant
-    }
-
-    // 14 procedural animated speed streaks across the screen
-    struct StreakDef {
-        float y_rel;
-        float x_start_rel;
-        float length_rel;
-        float thickness;
-        float alpha_mul;
-        float red_tint;
-    };
-
-    static const StreakDef kStreaks[] = {
-        {0.22f, 0.08f, 0.42f, 7.0f, 0.85f, 0.12f},
-        {0.28f, 0.35f, 0.55f, 10.0f, 0.95f, 0.08f},
-        {0.34f, 0.15f, 0.48f, 6.0f, 0.75f, 0.15f},
-        {0.41f, 0.48f, 0.50f, 14.0f, 1.00f, 0.05f},
-        {0.47f, 0.05f, 0.62f, 18.0f, 0.90f, 0.18f}, // Main core silhouette streak
-        {0.52f, 0.28f, 0.58f, 16.0f, 0.95f, 0.10f},
-        {0.58f, 0.52f, 0.45f, 12.0f, 0.85f, 0.14f},
-        {0.64f, 0.12f, 0.52f, 8.0f, 0.80f, 0.06f},
-        {0.70f, 0.38f, 0.46f, 11.0f, 0.90f, 0.12f},
-        {0.76f, 0.20f, 0.40f, 6.0f, 0.70f, 0.04f},
-        {0.82f, 0.45f, 0.48f, 9.0f, 0.75f, 0.10f},
-        {0.18f, 0.55f, 0.38f, 5.0f, 0.65f, 0.05f},
-        {0.61f, 0.02f, 0.65f, 15.0f, 0.92f, 0.16f},
-        {0.88f, 0.30f, 0.44f, 7.0f, 0.68f, 0.08f},
-    };
-
-    float scale = height / 1080.0f;
-    if (scale < 0.65f) scale = 0.65f;
-    if (scale > 1.4f) scale = 1.4f;
-
-    float anim_offset_x = static_cast<float>(step) * 55.0f * (ddx != 0.0f ? (ddx > 0 ? 1.0f : -1.0f) : 1.0f) * scale;
-    float anim_offset_y = static_cast<float>(step) * 12.0f * scale;
-
-    for (const auto& s : kStreaks) {
-        float x0 = s.x_start_rel * width + anim_offset_x;
-        float y0 = s.y_rel * height + anim_offset_y;
-        float len = s.length_rel * width * (0.8f + intensity * 0.4f);
-        float th = s.thickness * scale * (0.7f + intensity * 0.6f);
-        float slant = dir_slant * scale;
-
-        float alpha = intensity * s.alpha_mul * 0.85f;
-        if (alpha > 0.92f) alpha = 0.92f;
-
-        // Black core speed streak
-        push_slanted_quad(verts,
-            x0, y0,
-            x0 + len, y0 + slant * 0.25f,
-            x0 + len + slant, y0 + slant * 0.25f + th,
-            x0 + slant, y0 + th,
-            0.0f, 0.0f, 0.0f, alpha);
-
-        // DMC3 Crimson outline / smoke rim accent
-        if (s.red_tint > 0.05f) {
-            float crimson_alpha = alpha * 0.45f;
-            push_slanted_quad(verts,
-                x0 - 2.0f * scale, y0 - 1.5f * scale,
-                x0 + len + 2.0f * scale, y0 + slant * 0.25f - 1.5f * scale,
-                x0 + len + slant + 2.0f * scale, y0 + slant * 0.25f + th + 1.5f * scale,
-                x0 + slant - 2.0f * scale, y0 + th + 1.5f * scale,
-                s.red_tint * 1.5f, 0.01f, 0.02f, crimson_alpha);
-        }
-    }
-
-    // 3. Central Dark Silhouette Core (around Dante's evasive center)
-    float center_x = width * 0.5f + (ddx * 120.0f * scale);
-    float center_y = height * 0.58f;
-    float core_w = 260.0f * scale * (0.8f + intensity * 0.5f);
-    float core_h = 140.0f * scale * (0.8f + intensity * 0.5f);
-    float core_alpha = intensity * 0.40f;
-
-    push_slanted_quad(verts,
-        center_x - core_w * 0.5f, center_y - core_h * 0.5f,
-        center_x + core_w * 0.5f, center_y - core_h * 0.5f,
-        center_x + core_w * 0.5f + dir_slant * 0.5f, center_y + core_h * 0.5f,
-        center_x - core_w * 0.5f + dir_slant * 0.5f, center_y + core_h * 0.5f,
-        0.0f, 0.0f, 0.0f, core_alpha);
-
-    submit(verts, width, height, 0.0f, g_font_view);
-}
-
 void draw_screen(float width, float height) {
     if (g_screen == Screen::Title) {
         draw_title_menu(width, height);
     } else if (g_screen == Screen::Missions) {
         draw_mission_screen(width, height);
     } else if (mod_in_game()) {
-        draw_dash_black_trail(width, height);
         draw_style_hud(width, height);
     }
 }

@@ -24,16 +24,16 @@ constexpr uintptr_t kAnimStructRva = 0x460;
 constexpr uintptr_t kAnimTimerOffset = 0x110;
 
 constexpr uintptr_t kActorPlayMotionRva = 0x26CCD0;
-constexpr uintptr_t kActorPlayUpperMotionRva = 0x26D330;
 constexpr uintptr_t kPlayEffectRva = 0x81D20;
 constexpr uintptr_t kGetEffectInstanceRva = 0x820D0;
 
-// Dante motion IDs in DMC1
+// Dante authentic motion IDs in DMC1 (from body + 0x540 motion table)
 constexpr uint32_t kMotionIdle = 0;
+constexpr uint32_t kMotionWalk = 1;
 constexpr uint32_t kMotionRun = 2;
-constexpr uint32_t kMotionDash = 7;
-constexpr uint32_t kMotionBackstep = 8;
-constexpr uint32_t kMotionStinger = 0x523;
+constexpr uint32_t kMotionRoll = 0x24;      // 36 decimal: authentic evasive roll/dash
+constexpr uint32_t kMotionBackflip = 0x1D;  // 29 decimal: authentic backflip/retreat
+constexpr uint32_t kMotionStinger = 0x523;  // Stinger forward thrust
 
 // Game audio/particle effect IDs
 constexpr uintptr_t kMotionTrailRva = 0x56383B;
@@ -48,7 +48,6 @@ constexpr uint32_t kEffectColorAura = 0x00610002;
 constexpr uint32_t kEffectColorStreak = 0x00620002;
 
 using ActorPlayMotionFn = void(__fastcall*)(void* actor, void* motion_table, uint32_t motion_id, uint32_t mode, uint32_t flags);
-using ActorPlayUpperMotionFn = void(__fastcall*)(void* motion_table, uint32_t edx, uint32_t r8d);
 using PlayEffectFn = void*(__fastcall*)(uint32_t effect_id, void* p1, void* pos, uint64_t flags);
 using GetEffectInstanceFn = void*(__fastcall*)(void* handle);
 
@@ -90,23 +89,13 @@ void play_actor_motion(uint8_t* body, uint32_t motion_id) {
     *reinterpret_cast<uint32_t*>(body + kMotionPrevRva) = motion_id;
     *reinterpret_cast<uint32_t*>(body + kMotionActiveRva) = motion_id;
 
-    // Dante's actor motion table is at body + 0x1B88 (with fallback to 0x540)
-    void* motion_table = *reinterpret_cast<void**>(body + 0x1B88);
-    if (!motion_table) {
-        motion_table = *reinterpret_cast<void**>(body + 0x540);
-    }
+    void* motion_table = *reinterpret_cast<void**>(body + 0x540);
     if (!motion_table) {
         return;
     }
 
     auto play_fn = reinterpret_cast<ActorPlayMotionFn>(base + kActorPlayMotionRva);
     play_fn(body, motion_table, motion_id, 1, 0x100);
-
-    // Apply upper body motion layer if dash or backstep
-    if (motion_id == kMotionDash || motion_id == kMotionBackstep) {
-        auto upper_fn = reinterpret_cast<ActorPlayUpperMotionFn>(base + kActorPlayUpperMotionRva);
-        upper_fn(motion_table, 9, 11);
-    }
 }
 
 void play_effect_at(float x, float y, float z, uint32_t effect_id, float r = -1.0f, float g = 0.0f, float b = 0.0f, float a = 255.0f) {
@@ -421,15 +410,15 @@ void trickster_execute_action() {
 
         play_effect_at(cur_x, cur_y, cur_z, kEffectMagicCircle);
         play_effect_at(cur_x, cur_y, cur_z, kEffectDashWhoosh);
-        play_effect_at(cur_x, cur_y, cur_z, kEffectColorAura, 210.0f, 35.0f, 70.0f, 200.0f);
+        play_effect_at(cur_x, cur_y, cur_z, kEffectColorAura, 0.0f, 0.0f, 0.0f, 220.0f);
 
         write_coords(body, target_x, cur_y, target_z);
 
         play_effect_at(target_x, cur_y, target_z, kEffectTeleportFlash);
         play_effect_at(target_x, cur_y, target_z, kEffectSparkStreak);
-        play_effect_at(target_x, cur_y, target_z, kEffectColorStreak, 210.0f, 35.0f, 70.0f, 200.0f);
+        play_effect_at(target_x, cur_y, target_z, kEffectColorStreak, 0.0f, 0.0f, 0.0f, 220.0f);
 
-        play_actor_motion(body, kMotionBackstep);
+        play_actor_motion(body, kMotionBackflip);
 
         g_iframe_timer = 12;
         g_cooldown = kWarpCooldownFrames;
@@ -459,17 +448,27 @@ void trickster_execute_action() {
         *reinterpret_cast<uint8_t*>(base + kMotionTrailRva) |= 0x18;
     }
 
-    *reinterpret_cast<uint16_t*>(body + 0x0E) |= 0x6000;
+    // Enable native 3D ghost afterimage cloner (bit 0x4000 set, bit 0x2000 cleared)
+    *reinterpret_cast<uint16_t*>(body + 0x0E) |= 0x4000;
+    *reinterpret_cast<uint16_t*>(body + 0x0E) &= ~0x2000;
+    *reinterpret_cast<int32_t*>(body + 0x1a88) = 16;
     write_f32(body + 0x210, 0.0f);
     write_f32(body + 0x214, 0.0f);
     write_f32(body + 0x218, 0.0f);
+    write_f32(body + 0x21C, 1.0f);
 
-    play_actor_motion(body, kMotionDash);
-    play_effect_at(cur_x, cur_y, cur_z, kEffectDashWhoosh);
+    // Set player state machine to evasion roll (Group 1, Subaction 1, Step 1)
+    *reinterpret_cast<uint16_t*>(body) = 0x0101;
+    body[2] = 1;
+    body[0x17A4] = 0x80;
+
+    play_actor_motion(body, kMotionRoll);
+
+    // 3D particles directly at Dante's body in world space
+    play_effect_at(cur_x, cur_y + 60.0f, cur_z, kEffectColorAura, 0.0f, 0.0f, 0.0f, 240.0f);
+    play_effect_at(cur_x, cur_y + 60.0f, cur_z, kEffectColorStreak, 0.0f, 0.0f, 0.0f, 240.0f);
+    play_effect_at(cur_x, cur_y + 40.0f, cur_z, kEffectDashWhoosh);
     play_effect_at(cur_x, cur_y, cur_z, kEffectGroundDust);
-    play_effect_at(cur_x, cur_y, cur_z, kEffectSparkStreak);
-    play_effect_at(cur_x, cur_y, cur_z, kEffectColorAura, 230.0f, 40.0f, 60.0f, 220.0f);
-    play_effect_at(cur_x, cur_y, cur_z, kEffectColorStreak, 220.0f, 30.0f, 80.0f, 220.0f);
 
     g_active_action_name = "DASH";
     mod_log("trickster: Dash started dx=%.2f dz=%.2f facing=%.2f dot=%.2f lock_on=%d", g_dash_dx, g_dash_dz, read_f32(body + kFacingRva), dot, lock_on ? 1 : 0);
@@ -480,7 +479,8 @@ void trickster_execute_action() {
 void trickster_init() {
     uint8_t* body = mod_actor();
     if (body) {
-        *reinterpret_cast<uint16_t*>(body + 0x0E) &= ~0x6000;
+        *reinterpret_cast<uint16_t*>(body + 0x0E) &= ~0x4000;
+        *reinterpret_cast<int32_t*>(body + 0x1a88) = 0;
     }
     uintptr_t base = mod_base();
     if (base) {
@@ -564,26 +564,26 @@ void trickster_update() {
         // Continuously suppress any gun shooting animation
         clear_shoot_state(body);
 
-        // Turn on actor shadow trail
-        *reinterpret_cast<uint16_t*>(body + 0x0E) |= 0x6000;
+        // Turn on actor shadow trail (enable bit 0x4000, clear bit 0x2000, set duration 16)
+        *reinterpret_cast<uint16_t*>(body + 0x0E) |= 0x4000;
+        *reinterpret_cast<uint16_t*>(body + 0x0E) &= ~0x2000;
+        *reinterpret_cast<int32_t*>(body + 0x1a88) = 16;
         write_f32(body + 0x210, 0.0f);
         write_f32(body + 0x214, 0.0f);
         write_f32(body + 0x218, 0.0f);
+        write_f32(body + 0x21C, 1.0f);
 
         uintptr_t base = mod_base();
         if (base) {
             *reinterpret_cast<uint8_t*>(base + kMotionTrailRva) |= 0x18;
         }
 
-        // Maintain active dash motion throughout all dash frames so Dante never resets to idle
-        uint16_t cur_mot = *reinterpret_cast<uint16_t*>(body + 0xe56);
-        if (cur_mot == 0) {
-            play_actor_motion(body, kMotionDash);
-        }
-        *reinterpret_cast<uint16_t*>(body + 0xe56) = static_cast<uint16_t>(kMotionDash);
-        *reinterpret_cast<uint32_t*>(body + kMotionActiveRva) = kMotionDash;
+        // Maintain evasive roll state in DMC1 player state machine so engine never resets Dante to idle
+        *reinterpret_cast<uint16_t*>(body) = 0x0101;
+        body[2] = 1;
 
         float cur_x = read_f32(body + kPosBaseRva);
+        float cur_y = read_f32(body + kPosBaseRva + 4);
         float cur_z = read_f32(body + kPosBaseRva + 8);
 
         int step = (kDashFrames - g_dash_timer) + 1;
@@ -594,17 +594,29 @@ void trickster_update() {
 
         write_horizontal_coords(body, next_x, next_z);
 
-        if (g_dash_timer % 4 == 0) {
-            play_effect_at(next_x, read_f32(body + kPosBaseRva + 4), next_z, kEffectGroundDust);
+        // Spawn 3D black aura and streak particles attached directly to Dante's active world position
+        if (g_dash_timer % 2 == 0) {
+            play_effect_at(next_x, cur_y + 60.0f, next_z, kEffectColorAura, 0.0f, 0.0f, 0.0f, 240.0f);
+            play_effect_at(next_x, cur_y + 60.0f, next_z, kEffectColorStreak, 0.0f, 0.0f, 0.0f, 240.0f);
+            play_effect_at(next_x, cur_y + 40.0f, next_z, kEffectDashWhoosh);
+        }
+
+        if (g_dash_timer % 3 == 0) {
+            play_effect_at(next_x, cur_y, next_z, kEffectGroundDust);
         }
 
         g_dash_timer--;
         if (g_dash_timer == 0) {
-            // Turn off actor shadow trail
-            *reinterpret_cast<uint16_t*>(body + 0x0E) &= ~0x6000;
+            // Turn off 3D shadow trail
+            *reinterpret_cast<uint16_t*>(body + 0x0E) &= ~0x4000;
+            *reinterpret_cast<int32_t*>(body + 0x1a88) = 0;
             if (base) {
                 *reinterpret_cast<uint8_t*>(base + kMotionTrailRva) &= ~0x18;
             }
+
+            // Restore normal ground locomotion state
+            *reinterpret_cast<uint16_t*>(body) = 0x0000;
+            body[2] = 0;
 
             // Seamless transition
             bool input_held = false;
