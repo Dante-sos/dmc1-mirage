@@ -199,23 +199,23 @@ void trickster_execute_action() {
         SHORT sy = g_buffered_pad_state.gamepad.leftY;
         if (std::abs(sx) > 7000 || std::abs(sy) > 7000) {
             in_x = static_cast<float>(sx) / 32767.0f;
-            in_z = static_cast<float>(sy) / 32767.0f;
+            in_z = -static_cast<float>(sy) / 32767.0f;
         }
     }
 
     // 2. Keyboard WASD and Arrow Keys
     // In DMC1 camera/world space:
-    // W / Up is +Z
-    // S / Down is -Z
-    // D / Right is +X
-    // A / Left is -X
+    // W / Up is -Z (Forward, away from camera)
+    // S / Down is +Z (Backward, towards camera)
+    // D / Right is +X (Right)
+    // A / Left is -X (Left)
     float key_x = 0.0f;
     float key_z = 0.0f;
     if ((GetAsyncKeyState('W') & 0x8000) != 0 || (GetAsyncKeyState(VK_UP) & 0x8000) != 0) {
-        key_z += 1.0f;
+        key_z -= 1.0f;
     }
     if ((GetAsyncKeyState('S') & 0x8000) != 0 || (GetAsyncKeyState(VK_DOWN) & 0x8000) != 0) {
-        key_z -= 1.0f;
+        key_z += 1.0f;
     }
     if ((GetAsyncKeyState('D') & 0x8000) != 0 || (GetAsyncKeyState(VK_RIGHT) & 0x8000) != 0) {
         key_x += 1.0f;
@@ -281,7 +281,7 @@ void trickster_execute_action() {
                 g_iframe_timer = 12;
                 g_cooldown = kWarpCooldownFrames;
                 g_active_action_name = "WARP DASH";
-                mod_log("trickster: Warp Dash to enemy dist=%.1f", edist);
+                mod_log("trickster: Warp Dash to enemy dist=%.1f in_x=%.2f in_z=%.2f dot=%.2f", edist, in_x, in_z, dot);
                 return;
             }
         }
@@ -295,7 +295,7 @@ void trickster_execute_action() {
         g_iframe_timer = 10;
         g_cooldown = kWarpCooldownFrames;
         g_active_action_name = "WARP DASH";
-        mod_log("trickster: Warp Dash forward %.1f", warp_dist);
+        mod_log("trickster: Warp Dash forward %.1f in_x=%.2f in_z=%.2f dot=%.2f facing=%.2f", warp_dist, in_x, in_z, dot, facing);
         return;
     }
 
@@ -309,7 +309,7 @@ void trickster_execute_action() {
         g_iframe_timer = 12;
         g_cooldown = kWarpCooldownFrames;
         g_active_action_name = "BACKDASH";
-        mod_log("trickster: Backdash retreat %.1f", warp_dist);
+        mod_log("trickster: Backdash retreat %.1f in_x=%.2f in_z=%.2f dot=%.2f facing=%.2f", warp_dist, in_x, in_z, dot, facing);
         return;
     }
 
@@ -330,7 +330,7 @@ void trickster_execute_action() {
     }
 
     g_active_action_name = "DASH";
-    mod_log("trickster: Dash started dx=%.2f dz=%.2f facing=%.2f lock_on=%d", g_dash_dx, g_dash_dz, read_f32(body + kFacingRva), lock_on ? 1 : 0);
+    mod_log("trickster: Dash started dx=%.2f dz=%.2f facing=%.2f dot=%.2f lock_on=%d", g_dash_dx, g_dash_dz, read_f32(body + kFacingRva), dot, lock_on ? 1 : 0);
 }
 
 }  // namespace
