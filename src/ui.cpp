@@ -87,6 +87,8 @@ int g_title_hits = 0;
 float g_menu_anchor = 0.662f;
 std::atomic<bool> g_capture{false};
 std::atomic<bool> g_inject_on{false};
+bool g_inject_keep = false;
+std::atomic<bool> g_wait_release{false};
 std::atomic<WORD> g_inject_buttons{0};
 WORD g_inject_words[12] = {};
 int g_inject_count = 0;
@@ -815,10 +817,11 @@ void move_mode(int delta) {
     }
 }
 
-void start_inject(const WORD* words, int count) {
+void start_inject(const WORD* words, int count, bool keep_menu = false) {
     if (count > 12) {
         count = 12;
     }
+    g_inject_keep = keep_menu;
     g_inject_count = count;
     g_inject_pos = 0;
     g_inject_frames = 0;
@@ -827,8 +830,10 @@ void start_inject(const WORD* words, int count) {
     }
     g_inject_buttons.store(count > 0 ? words[0] : 0);
     g_inject_on.store(count > 0);
-    g_screen = Screen::None;
-    g_probe_cooldown = 50;
+    if (!keep_menu) {
+        g_screen = Screen::None;
+        g_probe_cooldown = 50;
+    }
 }
 
 void tick_inject() {
@@ -836,15 +841,18 @@ void tick_inject() {
         return;
     }
     g_inject_frames++;
-    if (g_inject_frames < 7) {
+    if (g_inject_frames < 10) {
         return;
     }
     g_inject_frames = 0;
     g_inject_pos++;
     if (g_inject_pos >= g_inject_count) {
         g_inject_on.store(false);
-        g_capture.store(false);
-        g_screen = Screen::None;
+        g_wait_release.store(true);
+        if (!g_inject_keep) {
+            g_capture.store(false);
+            g_screen = Screen::None;
+        }
         return;
     }
     g_inject_buttons.store(g_inject_words[g_inject_pos]);
