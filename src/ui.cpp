@@ -95,6 +95,13 @@ int g_inject_count = 0;
 int g_inject_pos = 0;
 int g_inject_frames = 0;
 int g_probe_cooldown = 0;
+bool g_seek = false;
+int g_seek_pulse = 0;
+int g_seek_gap = 0;
+int g_seek_tries = 0;
+WORD g_seek_word = 0;
+SHORT g_seek_stick = 0;
+bool g_seek_confirming = false;
 bool g_logged_menu = false;
 WORD g_prev_buttons = 0;
 bool g_key_down[7] = {};
@@ -874,6 +881,28 @@ void activate_game_item(int game_index) {
     start_inject(steps, count);
 }
 
+void begin_load_seek() {
+    g_seek = true;
+    g_seek_pulse = 0;
+    g_seek_gap = 2;
+    g_seek_tries = 0;
+    g_seek_word = 0x1000;
+    g_seek_stick = 0;
+    g_seek_confirming = false;
+    g_capture.store(true);
+    log_line("confirming load data");
+}
+
+void finish_load_seek() {
+    g_seek = false;
+    g_seek_pulse = 0;
+    g_seek_confirming = false;
+    g_screen = Screen::None;
+    g_probe_cooldown = 45;
+    g_capture.store(false);
+    g_wait_release.store(true);
+}
+
 void show_title() {
     if (g_screen == Screen::Title) {
         return;
@@ -930,6 +959,28 @@ float average_lum(const uint8_t* pixels, int width, int height, int pitch, int y
         return 255.0f;
     }
     return static_cast<float>(sum) / static_cast<float>(count);
+}
+
+void tick_seek() {
+    if (!g_seek) {
+        return;
+    }
+    if (g_seek_pulse > 0) {
+        g_seek_pulse--;
+        if (g_seek_pulse == 0 && g_seek_confirming) {
+            log_line("load data confirmed");
+            finish_load_seek();
+        }
+        return;
+    }
+    if (g_seek_gap > 0) {
+        g_seek_gap--;
+        return;
+    }
+    g_seek_word = 0x1000;
+    g_seek_stick = 0;
+    g_seek_confirming = true;
+    g_seek_pulse = 2;
 }
 
 bool text_line(const uint8_t* pixels, int width, int height, int pitch, int y0, int y1, int min_lum, float min_width, float max_width) {
@@ -1254,6 +1305,7 @@ void paint(IDXGISwapChain* swap) {
         return;
     }
     tick_inject();
+    tick_seek();
     if (g_probe_cooldown > 0) {
         g_probe_cooldown--;
     }
