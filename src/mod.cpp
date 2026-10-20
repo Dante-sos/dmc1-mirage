@@ -59,6 +59,10 @@ std::atomic<bool> g_mission_staged{false};
 std::atomic<bool> g_start_requested{false};
 std::atomic<bool> g_hold_event{false};
 std::atomic<bool> g_event_hold_enabled{true};
+// Title menu request applied on the game thread: 0 none, 1 new game / mission, 2 load data.
+std::atomic<int> g_menu_request{0};
+// While true, the title attract-demo timer is held so the intro video never starts behind the launcher.
+std::atomic<bool> g_hold_title{true};
 bool g_logged_title_loop = false;
 bool g_logged_event_loop = false;
 DWORD g_stage_tick = 0;
@@ -392,6 +396,37 @@ extern "C" void apply_pending_at_menu() {
         g_logged_title_loop = true;
         log_line("title loop active state %u", config[0]);
     }
+    if (!config || config[0] != 5) {
+        return;
+    }
+    if (g_hold_title.load()) {
+        // +0x34 counts down to the attract demo; +0x30 is its reload value (set by title state 4).
+        std::memcpy(config + 0x34, config + 0x30, sizeof(uint32_t));
+    }
+    int request = g_menu_request.load();
+    // Substate 2 is the native "waiting for input" step of the title menu (state 5).
+    if (request == 0 || config[1] != 2) {
+        return;
+    }
+    g_menu_request.store(0);
+    if (request == 1) {
+        int mission = g_pending_mission.load();
+        int mode = g_pending_mode.load();
+        if (mission < 1) {
+            return;
+        }
+        // Same writes as the native New Game / difficulty confirm (0x3f9180..0x3f919c).
+        config[0x10] = static_cast<uint8_t>(mission);
+        config[0x0B] = static_cast<uint8_t>(mode);
+        write_u32(config, 6);
+        config[0x0D] = 0;
+        log_line("title menu -> new game mission %d mode %d", mission, mode);
+    } else if (request == 2) {
+        // Same writes as the native Load confirm (0x3f8cfa..0x3f8d00).
+        write_u32(config, 9);
+        config[0x0D] = 1;
+        log_line("title menu -> load data");
+    }
 }
 
 void stage_chosen_mission() {
@@ -435,13 +470,13 @@ extern "C" void apply_pending_at_event() {
     if (!event) {
         return;
     }
-    if (g_start_requested.load()) {
+    if (g_start_requested.load() && (g_hold_event.load() || event[0] == 0)) {
         stage_chosen_mission();
-        event[0] = 1; // Event State 1: Launches directly into mission, skipping opening cutscene!
+        event[0] = 0;
         g_event_hold_enabled.store(false);
         g_hold_event.store(false);
         g_start_requested.store(false);
-        log_line("event loop launch %d directly into mission (skipped intro)", g_pending_mission.load());
+        log_line("event loop launch %d", g_pending_mission.load());
         return;
     }
     if (event[0] == 0 && !g_start_requested.load() && g_event_hold_enabled.load()) {
@@ -676,23 +711,14 @@ void mod_begin_mission() {
     if (mission < 1) {
         return;
     }
-    auto slot = reinterpret_cast<uint8_t**>(g_base + kMenuConfigPtrRva);
-    uint8_t* config = slot ? *slot : nullptr;
-    if (config) {
-        config[0x10] = static_cast<uint8_t>(mission);
-        config[0x0B] = static_cast<uint8_t>(mode);
-        config[0x0D] = 0;
-        *reinterpret_cast<uint32_t*>(config) = 6; // State 6: Directly triggers DMC1 mission launch!
-        log_line("mission start %d mode %d (state 6 triggered)", mission, mode);
-    } else {
-        log_line("mission start %d mode %d missing menu config", mission, mode);
-    }
     if (in_game()) {
-        force_pending_mission(true);
-        stage_chosen_mission();
+        log_line("mission start %d ignored: only available from the title screen", mission);
+        return;
     }
+    g_hold_title.store(false);
     g_start_requested.store(true);
-    g_event_hold_enabled.store(false);
+    g_menu_request.store(1);
+    log_line("mission start %d mode %d queued", mission, mode);
 }
 
 void mod_clear_mission() {
@@ -711,17 +737,14 @@ void mod_release_hold() {
 }
 
 void mod_open_load_menu() {
-    auto slot = reinterpret_cast<uint8_t**>(g_base + kMenuConfigPtrRva);
-    uint8_t* config = slot ? *slot : nullptr;
-    if (!config) {
-        log_line("open load menu missing menu config");
+    if (in_game()) {
+        log_line("load data ignored: only available from the title screen");
         return;
     }
-    *reinterpret_cast<uint32_t*>(config) = 11; // State 11: Native DMC1 Save / Load menu!
-    config[1] = 0;
-    config[0x0D] = 0;
-    g_event_hold_enabled.store(false);
-    log_line("opened native save/load menu (state 11)");
+    g_hold_title.store(false);
+    g_start_requested.store(false);
+    g_menu_request.store(2);
+    log_line("load data queued");
 }
 
 int mod_armed_mission() {

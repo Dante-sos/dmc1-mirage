@@ -31,7 +31,7 @@ constexpr uintptr_t kGetEffectInstanceRva = 0x820D0;
 constexpr uint32_t kMotionIdle = 0;
 constexpr uint32_t kMotionWalk = 1;
 constexpr uint32_t kMotionRun = 2;
-constexpr uint32_t kMotionDashSlide = 0x1420; // Authentic DMC1 sprint dash slide motion (r8d = 0x1420 at 0x2C97D1)
+constexpr uint32_t kMotionDashSlide = 0x22;   // 34 decimal: authentic DMC1 low skate slide motion (from 0x2CA374: 0x0A22)
 constexpr uint32_t kMotionSkidTurn = 0x2B;   // 43 decimal: alternative low crouch slide
 constexpr uint32_t kMotionBackflip = 0x1D;   // 29 decimal: authentic backflip/retreat
 constexpr uint32_t kMotionStinger = 0x523;   // Stinger forward thrust
@@ -500,9 +500,8 @@ void trickster_execute_action() {
     // Set player state machine to ground locomotion slide (Category 1, Subaction 2 = Skid Slide)
     // Subaction 2 allows the low skate slide animation to play without being cancelled into idle!
     *reinterpret_cast<uint16_t*>(body) = 0x0201;
-    body[2] = 0;
+    body[2] = 1;
     body[0x17A4] = 0;
-    *reinterpret_cast<float*>(body + 0x1928) = 1.0f;
 
     // Trigger authentic DMC3-style low skate slide motion
     play_actor_motion(body, kMotionDashSlide);
@@ -640,8 +639,8 @@ void trickster_update() {
 
         // Maintain ground slide state (Action 1, Subaction 2) and ensure lockout flag remains 0
         *reinterpret_cast<uint16_t*>(body) = 0x0201;
+        body[2] = 1;
         body[0x17A4] = 0;
-        *reinterpret_cast<float*>(body + 0x1928) = 1.0f;
 
         // Keep Dante facing strictly in the dash direction throughout the slide
         write_f32(body + kFacingRva, std::atan2(g_dash_dx, g_dash_dz));
