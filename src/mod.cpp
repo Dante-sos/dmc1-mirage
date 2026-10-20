@@ -62,7 +62,6 @@ bool g_logged_event_loop = false;
 DWORD g_stage_tick = 0;
 int g_in_game_frames = 0;
 bool g_logged_spawn = false;
-int g_mission_restores = 0;
 
 std::atomic<bool> g_want_melee{false};
 std::atomic<bool> g_want_ranged{false};
@@ -529,21 +528,19 @@ void keep_chosen_mission() {
         return;
     }
     uint8_t* data = session();
-    if (data && data[kMissionOffset] != static_cast<uint8_t>(mission) && g_mission_restores < 5) {
-        int mode = g_pending_mode.load();
-        uint8_t previous = 0;
-        write_mission_choice(mission, mode, previous);
-        if (data) {
-            uint32_t flags = 0;
-            std::memcpy(&flags, data + kEventOffset, sizeof(flags));
-            flags |= 0x800;
-            std::memcpy(data + kEventOffset, &flags, sizeof(flags));
+    if (data && data[kMissionOffset] != static_cast<uint8_t>(mission)) {
+        if (g_in_game_frames < 45) {
+            data[kMissionOffset] = static_cast<uint8_t>(mission);
+            data[kModeOffset] = static_cast<uint8_t>(g_pending_mode.load());
+            mark_mission_start(data);
         }
-        place_mission_spawn(mission);
-        g_mission_restores++;
-        log_line("mission restored from %u to %d", previous, mission);
+    } else if (data) {
+        mark_mission_start(data);
     }
-    if (in_game() && g_stage_tick != 0 && static_cast<int32_t>(GetTickCount() - g_stage_tick) > 8000) {
+    if (in_game()) {
+        g_in_game_frames++;
+    }
+    if (g_in_game_frames > 45) {
         g_pending_mission.store(-1);
         g_mission_staged.store(false);
         log_line("mission override finished");
@@ -639,7 +636,6 @@ void install_hooks() {
 void mod_arm_mission(int mission, int mode) {
     g_mission_staged.store(false);
     g_stage_tick = 0;
-    g_mission_restores = 0;
     g_pending_mode.store(mode);
     g_pending_mission.store(mission);
     log_line("armed mission %d mode %d", mission, mode);
