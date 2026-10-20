@@ -54,9 +54,14 @@ int g_trigger_threshold = 30;
 
 std::atomic<int> g_pending_mission{-1};
 std::atomic<int> g_pending_mode{3};
-std::atomic<int> g_applies_left{0};
 std::atomic<bool> g_mission_staged{false};
+std::atomic<bool> g_start_requested{false};
+std::atomic<bool> g_hold_event{false};
+bool g_logged_title_loop = false;
+bool g_logged_event_loop = false;
 DWORD g_stage_tick = 0;
+int g_in_game_frames = 0;
+bool g_logged_spawn = false;
 int g_mission_restores = 0;
 
 std::atomic<bool> g_want_melee{false};
@@ -220,15 +225,12 @@ void write_f32(uint8_t* address, float value) {
     std::memcpy(address, &value, sizeof(value));
 }
 
-// The save copy and the session reset both run while a mission is starting, and
-// whichever runs last was putting mission 1 back. Keep rewriting until that burst ends.
-bool claim_pending(int& mission, int& mode) {
+bool pending_choice(int& mission, int& mode) {
     mission = g_pending_mission.load();
-    if (mission < 1 || g_applies_left.load() < 1) {
+    if (mission < 1) {
         return false;
     }
     mode = g_pending_mode.load();
-    g_applies_left.fetch_sub(1);
     return true;
 }
 
@@ -283,39 +285,135 @@ void place_mission_spawn(int mission) {
         }
         write_f32(body + 0x124, facing);
     }
-    log_line("mission spawn stage %u room %u", stage, room);
+    if (!g_logged_spawn) {
+        g_logged_spawn = true;
+        log_line("mission spawn stage %u room %u", stage, room);
+    }
 }
 
-extern "C" void apply_pending_at_start() {
+bool spawn_matches(int mission) {
+    uint8_t* event = event_data();
+    if (!event || mission < 1 || mission > kMissionSlots) {
+        return false;
+    }
+    const uint8_t* entry = reinterpret_cast<uint8_t*>(g_base + kMissionTableRva) + static_cast<uintptr_t>(mission) * 0x20;
+    uint32_t stage = 0;
+    uint32_t room = 0;
+    uint32_t current_stage = 0;
+    uint32_t current_room = 0;
+    std::memcpy(&stage, entry, sizeof(stage));
+    std::memcpy(&room, entry + 4, sizeof(room));
+    std::memcpy(&current_stage, event + 0x270, sizeof(current_stage));
+    std::memcpy(&current_room, event + 0x274, sizeof(current_room));
+    return current_stage == stage && current_room == room;
+}
+
+void mark_mission_start(uint8_t* data) {
+    if (!data) {
+        return;
+    }
+    uint32_t flags = 0;
+    std::memcpy(&flags, data + kEventOffset, sizeof(flags));
+    flags |= 0x800;
+    std::memcpy(data + kEventOffset, &flags, sizeof(flags));
+}
+
+void force_pending_mission(bool place) {
     int mission = 0;
     int mode = 0;
-    if (!claim_pending(mission, mode)) {
+    if (!pending_choice(mission, mode)) {
         return;
     }
     uint8_t previous = 0;
     write_mission_choice(mission, mode, previous);
+    uint8_t* data = session();
+    mark_mission_start(data);
+    if (place && !spawn_matches(mission)) {
+        place_mission_spawn(mission);
+    }
     g_stage_tick = GetTickCount();
     g_mission_staged.store(true);
-    log_line("mission staged from %u to %d mode %d", previous, mission, mode);
+}
+
+extern "C" void apply_pending_at_start() {
+    int mission = g_pending_mission.load();
+    if (mission < 1) {
+        return;
+    }
+    uint8_t previous = 0;
+    uint8_t* data = session();
+    if (data) {
+        previous = data[kMissionOffset];
+    }
+    force_pending_mission(false);
+    log_line("mission staged from %u to %d", previous, mission);
 }
 
 extern "C" void apply_pending_at_load() {
-    int mission = 0;
-    int mode = 0;
-    if (!claim_pending(mission, mode)) {
+    int mission = g_pending_mission.load();
+    if (mission < 1) {
+        return;
+    }
+    uint8_t previous = 0;
+    uint8_t* data = session();
+    if (data) {
+        previous = data[kMissionOffset];
+    }
+    force_pending_mission(false);
+    log_line("mission load overridden from %u to %d", previous, mission);
+}
+
+void write_mission_room(int mission) {
+    if (mission < 1 || mission > kMissionSlots) {
+        return;
+    }
+    const uint8_t* entry = reinterpret_cast<uint8_t*>(g_base + kMissionTableRva) + static_cast<uintptr_t>(mission) * 0x20;
+    uint32_t stage = 0;
+    uint32_t room = 0;
+    float pos[4] = {};
+    std::memcpy(&stage, entry, sizeof(stage));
+    std::memcpy(&room, entry + 4, sizeof(room));
+    std::memcpy(pos, entry + 0x10, sizeof(pos));
+    uint8_t* event = event_data();
+    if (event) {
+        write_u32(event + 0x270, stage);
+        write_u32(event + 0x274, room);
+        write_u32(event + 0x288, stage);
+        write_u32(event + 0x28C, room);
+    }
+    std::memcpy(reinterpret_cast<void*>(g_base + kSpawnPosRva), pos, sizeof(pos));
+}
+
+void stage_chosen_mission() {
+    int mission = g_pending_mission.load();
+    int mode = g_pending_mode.load();
+    if (mission < 1 || mission > kMissionSlots) {
         return;
     }
     uint8_t previous = 0;
     write_mission_choice(mission, mode, previous);
     uint8_t* data = session();
     if (data) {
-        uint32_t flags = 0;
-        std::memcpy(&flags, data + kEventOffset, sizeof(flags));
-        flags |= 0x800;
-        std::memcpy(data + kEventOffset, &flags, sizeof(flags));
+        data[kMissionOffset + 1] = 0;
     }
-    place_mission_spawn(mission);
-    log_line("mission load overridden from %u to %d mode %d", previous, mission, mode);
+    const uint8_t* entry = reinterpret_cast<uint8_t*>(g_base + kMissionTableRva) + static_cast<uintptr_t>(mission) * 0x20;
+    uint32_t stage = 0;
+    uint32_t room = 0;
+    float pos[4] = {};
+    std::memcpy(&stage, entry, sizeof(stage));
+    std::memcpy(&room, entry + 4, sizeof(room));
+    std::memcpy(pos, entry + 0x10, sizeof(pos));
+    auto src_slot = reinterpret_cast<uint8_t**>(g_base + kRoomSrcPtrRva);
+    uint8_t* src = src_slot ? *src_slot : nullptr;
+    if (!src) {
+        log_line("mission room source missing");
+    } else {
+        write_u32(src + 0x1E0, stage);
+        write_u32(src + 0x1E4, room);
+        std::memcpy(src + 0x1E8, pos, sizeof(pos));
+    }
+    write_mission_room(mission);
+    log_line("mission room staged %d stage %u room %u", mission, stage, room);
 }
 
 const char* name_for(const uint8_t* ids, const char* const* names, size_t count, uint8_t id) {
@@ -499,7 +597,6 @@ void mod_arm_mission(int mission, int mode) {
     g_stage_tick = 0;
     g_mission_restores = 0;
     g_pending_mode.store(mode);
-    g_applies_left.store(8);
     g_pending_mission.store(mission);
     log_line("armed mission %d mode %d", mission, mode);
 }
