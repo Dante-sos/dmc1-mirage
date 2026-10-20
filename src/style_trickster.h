@@ -11,5 +11,3 @@ void trickster_update();
 bool trickster_is_dashing();
 bool trickster_is_invulnerable();
 const char* trickster_action_name();
-float trickster_dash_dx();
-float trickster_dash_dz();

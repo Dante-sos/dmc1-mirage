@@ -40,17 +40,14 @@ HRESULT __fastcall hook_get_device_state(void* this_ptr, DWORD cbData, void* lpv
         keys[0x2E] = 0; // DIK_C (Gunslinger)
         keys[0x2F] = 0; // DIK_V (RoyalGuard)
 
-        // When performing a style action, suppress attack/fire keys so style action takes priority
+        // When performing a style action, suppress attack/fire keys and movement keys so dash takes priority
         if (style_in_action()) {
             keys[0x24] = 0; // DIK_J (Melee attack)
             keys[0x17] = 0; // DIK_I (Devil trigger)
-            // Drive WASD in dash direction so DMC1 motion engine animates Dante in full motion
-            float d_dx = trickster_dash_dx();
-            float d_dz = trickster_dash_dz();
-            if (d_dz < -0.25f) keys[0x11] = 0x80; // DIK_W
-            if (d_dz > 0.25f) keys[0x1F] = 0x80;  // DIK_S
-            if (d_dx < -0.25f) keys[0x1E] = 0x80; // DIK_A
-            if (d_dx > 0.25f) keys[0x20] = 0x80;  // DIK_D
+            keys[0x11] = 0; // DIK_W
+            keys[0x1E] = 0; // DIK_A
+            keys[0x1F] = 0; // DIK_S
+            keys[0x20] = 0; // DIK_D
         }
     }
     return hr;
@@ -179,21 +176,14 @@ void style_on_pad(XInputState* state) {
         if (action_pressed) {
             trickster_request_action(state);
         }
-        // Consume B, Square (shoot), Melee (Y), Right Trigger so other actions don't interrupt dash
+        // Consume B, Square (shoot), Melee (Y), Right Trigger, and Left Stick so running doesn't conflict with dash
         if (action_held || key_l_held || trickster_is_dashing()) {
             state->gamepad.buttons &= ~kButtonB;
             state->gamepad.buttons &= ~kButtonX;
             state->gamepad.buttons &= ~kButtonY;
             state->gamepad.rightTrigger = 0;
-        }
-
-        if (trickster_is_dashing()) {
-            // Feed the dash direction into the gamepad stick so DMC1 motion engine actively animates Dante forward!
-            // In XInput: leftX positive is Right, leftY positive is Up/Forward (-Z in DMC1 world)
-            float d_dx = trickster_dash_dx();
-            float d_dz = trickster_dash_dz();
-            state->gamepad.leftX = static_cast<SHORT>(d_dx * 32700.0f);
-            state->gamepad.leftY = static_cast<SHORT>(-d_dz * 32700.0f);
+            state->gamepad.leftX = 0;
+            state->gamepad.leftY = 0;
         }
     }
 }

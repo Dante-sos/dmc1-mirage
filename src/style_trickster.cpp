@@ -493,14 +493,6 @@ const char* trickster_action_name() {
     return "";
 }
 
-float trickster_dash_dx() {
-    return g_dash_dx;
-}
-
-float trickster_dash_dz() {
-    return g_dash_dz;
-}
-
 void trickster_request_action(const XInputState* state) {
     g_action_buffer = kActionBufferFrames;
     if (state) {
