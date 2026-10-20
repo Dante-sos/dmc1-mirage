@@ -824,7 +824,7 @@ void move_mode(int delta) {
     }
 }
 
-void start_inject(const WORD* words, int count, bool keep_menu = false) {
+void start_inject(const WORD* words, int count, bool keep_menu) {
     if (count > 12) {
         count = 12;
     }
@@ -878,7 +878,7 @@ void activate_game_item(int game_index) {
     steps[count++] = 0x1000;
     steps[count++] = 0;
     g_capture.store(true);
-    start_inject(steps, count);
+    start_inject(steps, count, false);
 }
 
 void begin_load_seek() {
@@ -1170,7 +1170,7 @@ void update_menu_input() {
     bool confirm = (pressed & 0x1000) || edge_key(4, VK_RETURN);
     bool close = (pressed & 0x2000) || edge_key(5, VK_ESCAPE);
     bool reopen = edge_key(6, VK_F7);
-    if (g_inject_on.load()) {
+    if (g_inject_on.load() || g_seek) {
         return;
     }
     if (reopen) {
@@ -1197,7 +1197,7 @@ void update_menu_input() {
         if (close) {
             WORD steps[2] = {0x2000, 0};
             g_capture.store(true);
-            start_inject(steps, 2);
+            start_inject(steps, 2, false);
         } else if (confirm) {
             if (g_title_index == 1) {
                 g_screen = Screen::Missions;
@@ -1228,7 +1228,11 @@ void update_menu_input() {
     }
     if (confirm) {
         mod_arm_mission(g_mission + 1, kModeValues[g_mode]);
-        activate_game_item(0);
+        g_screen = Screen::None;
+        g_capture.store(false);
+        g_probe_cooldown = 45;
+        g_wait_release.store(true);
+        mod_begin_mission();
         return;
     }
     if (close) {
