@@ -1,4 +1,5 @@
 #include "mod.h"
+#include "style.h"
 
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -796,11 +797,66 @@ void draw_mission_screen(float width, float height) {
     submit(verts, width, height, 0.0f, g_font_view);
 }
 
+void draw_style_hud(float width, float height) {
+    StyleType style = style_current();
+    if (style == StyleType::None) {
+        return;
+    }
+
+    std::vector<Vertex> verts;
+    verts.reserve(256);
+
+    float scale = height / 1080.0f;
+    if (scale < 0.65f) scale = 0.65f;
+    if (scale > 1.4f) scale = 1.4f;
+
+    const char* s_name = style_name(style);
+    const char* a_name = style_action_name();
+
+    char label[64];
+    if (a_name && a_name[0] != '\0') {
+        std::snprintf(label, sizeof(label), "%s [%s]", s_name, a_name);
+    } else {
+        std::snprintf(label, sizeof(label), "%s", s_name);
+    }
+
+    float text_sc = scale * 0.44f;
+    float tracking = 0.85f * scale;
+    float text_w = text_width(label, text_sc, tracking);
+
+    float pad_x = 12.0f * scale;
+    float pad_y = 6.0f * scale;
+    float box_w = text_w + pad_x * 2.0f;
+    float box_h = 24.0f * scale + pad_y * 2.0f;
+
+    float x = 36.0f * scale;
+    float y = height - box_h - 26.0f * scale;
+
+    // Dark translucent backing
+    draw_rect(verts, x, y, box_w, box_h, 0.04f, 0.04f, 0.06f, 0.72f);
+
+    // Accent line along top edge
+    float r = 1.0f, g = 0.84f, b = 0.22f; // Trickster Gold
+    if (style == StyleType::RoyalGuard) {
+        r = 0.92f; g = 0.22f; b = 0.22f;
+    } else if (style == StyleType::Gunslinger) {
+        r = 0.25f; g = 0.75f; b = 1.0f;
+    } else if (style == StyleType::Swordmaster) {
+        r = 1.0f; g = 0.45f; b = 0.15f;
+    }
+    draw_rect(verts, x, y, box_w, 2.0f * scale, r, g, b, 0.90f);
+
+    draw_text_outlined(verts, x + pad_x, y + pad_y, label, text_sc, tracking, r, g, b, 1.0f);
+    submit(verts, width, height, 0.0f, g_font_view);
+}
+
 void draw_screen(float width, float height) {
     if (g_screen == Screen::Title) {
         draw_title_menu(width, height);
     } else if (g_screen == Screen::Missions) {
         draw_mission_screen(width, height);
+    } else if (mod_in_game()) {
+        draw_style_hud(width, height);
     }
 }
 
@@ -1324,7 +1380,7 @@ void paint(IDXGISwapChain* swap) {
     if (!g_inject_on.load() && g_probe_cooldown == 0 && !g_probe_pending) {
         queue_probe(back, desc);
     }
-    if (g_screen == Screen::None) {
+    if (g_screen == Screen::None && !mod_in_game()) {
         back->Release();
         return;
     }
@@ -1446,16 +1502,28 @@ bool hook_import(const char* dll_name, const char* function_name, void* detour, 
 HHOOK g_key_hook = nullptr;
 
 LRESULT CALLBACK keyboard_hook(int code, WPARAM wp, LPARAM lp) {
-    if (code == HC_ACTION && g_capture.load() && !g_inject_on.load()) {
+    if (code == HC_ACTION) {
         auto* info = reinterpret_cast<KBDLLHOOKSTRUCT*>(lp);
-        switch (info->vkCode) {
-        case VK_UP:
-        case VK_DOWN:
-        case VK_LEFT:
-        case VK_RIGHT:
-        case VK_RETURN:
-        case VK_ESCAPE:
-            return 1;
+        if (g_capture.load() && !g_inject_on.load()) {
+            switch (info->vkCode) {
+            case VK_UP:
+            case VK_DOWN:
+            case VK_LEFT:
+            case VK_RIGHT:
+            case VK_RETURN:
+            case VK_ESCAPE:
+                return 1;
+            }
+        }
+        if (mod_in_game()) {
+            switch (info->vkCode) {
+            case 'L':
+            case 'Z':
+            case 'X':
+            case 'C':
+            case 'V':
+                return 1;
+            }
         }
     }
     return CallNextHookEx(g_key_hook, code, wp, lp);
