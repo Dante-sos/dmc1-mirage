@@ -23,16 +23,16 @@ constexpr uintptr_t kMotionPrevRva = 0x1A50;
 constexpr uintptr_t kAnimStructRva = 0x460;
 constexpr uintptr_t kAnimTimerOffset = 0x110;
 
-constexpr uintptr_t kPlayMotionRva = 0x3C3250;
+constexpr uintptr_t kActorPlayMotionRva = 0x26CCD0;
+constexpr uintptr_t kActorPlayUpperMotionRva = 0x26D330;
 constexpr uintptr_t kPlayEffectRva = 0x81D20;
 constexpr uintptr_t kGetEffectInstanceRva = 0x820D0;
 
 // Dante motion IDs in DMC1
-constexpr uint32_t kMotionWalk = 0x500;
-constexpr uint32_t kMotionRun = 0x501;
-constexpr uint32_t kMotionDash = 0x507;
-constexpr uint32_t kMotionBackstep = 0x518;
-constexpr uint32_t kMotionLanding = 0x50C;
+constexpr uint32_t kMotionIdle = 0;
+constexpr uint32_t kMotionRun = 2;
+constexpr uint32_t kMotionDash = 7;
+constexpr uint32_t kMotionBackstep = 8;
 constexpr uint32_t kMotionStinger = 0x523;
 
 // Game audio/particle effect IDs
@@ -47,7 +47,8 @@ constexpr uint32_t kEffectTeleportFlash = 0x01040002;
 constexpr uint32_t kEffectColorAura = 0x00610002;
 constexpr uint32_t kEffectColorStreak = 0x00620002;
 
-using PlayMotionFn = void(__fastcall*)(uint32_t motion_id, void* target_pos, float speed, void* extra);
+using ActorPlayMotionFn = void(__fastcall*)(void* actor, void* motion_table, uint32_t motion_id, uint32_t mode, uint32_t flags);
+using ActorPlayUpperMotionFn = void(__fastcall*)(void* motion_table, uint32_t edx, uint32_t r8d);
 using PlayEffectFn = void*(__fastcall*)(uint32_t effect_id, void* p1, void* pos, uint64_t flags);
 using GetEffectInstanceFn = void*(__fastcall*)(void* handle);
 
@@ -89,13 +90,23 @@ void play_actor_motion(uint8_t* body, uint32_t motion_id) {
     *reinterpret_cast<uint32_t*>(body + kMotionPrevRva) = motion_id;
     *reinterpret_cast<uint32_t*>(body + kMotionActiveRva) = motion_id;
 
-    auto** anim_ptr = reinterpret_cast<uint8_t**>(body + kAnimStructRva);
-    if (anim_ptr && *anim_ptr) {
-        *reinterpret_cast<float*>(*anim_ptr + kAnimTimerOffset) = 0.0f;
+    // Dante's actor motion table is at body + 0x1B88 (with fallback to 0x540)
+    void* motion_table = *reinterpret_cast<void**>(body + 0x1B88);
+    if (!motion_table) {
+        motion_table = *reinterpret_cast<void**>(body + 0x540);
+    }
+    if (!motion_table) {
+        return;
     }
 
-    auto play_fn = reinterpret_cast<PlayMotionFn>(base + kPlayMotionRva);
-    play_fn(motion_id, body + kPosVisualRva, 20000.0f, nullptr);
+    auto play_fn = reinterpret_cast<ActorPlayMotionFn>(base + kActorPlayMotionRva);
+    play_fn(body, motion_table, motion_id, 1, 0x100);
+
+    // Apply upper body motion layer if dash or backstep
+    if (motion_id == kMotionDash || motion_id == kMotionBackstep) {
+        auto upper_fn = reinterpret_cast<ActorPlayUpperMotionFn>(base + kActorPlayUpperMotionRva);
+        upper_fn(motion_table, 9, 11);
+    }
 }
 
 void play_effect_at(float x, float y, float z, uint32_t effect_id, float r = -1.0f, float g = 0.0f, float b = 0.0f, float a = 255.0f) {
@@ -448,6 +459,11 @@ void trickster_execute_action() {
         *reinterpret_cast<uint8_t*>(base + kMotionTrailRva) |= 0x18;
     }
 
+    *reinterpret_cast<uint16_t*>(body + 0x0E) |= 0x6000;
+    write_f32(body + 0x210, 0.0f);
+    write_f32(body + 0x214, 0.0f);
+    write_f32(body + 0x218, 0.0f);
+
     play_actor_motion(body, kMotionDash);
     play_effect_at(cur_x, cur_y, cur_z, kEffectDashWhoosh);
     play_effect_at(cur_x, cur_y, cur_z, kEffectGroundDust);
@@ -462,6 +478,10 @@ void trickster_execute_action() {
 }  // namespace
 
 void trickster_init() {
+    uint8_t* body = mod_actor();
+    if (body) {
+        *reinterpret_cast<uint16_t*>(body + 0x0E) &= ~0x6000;
+    }
     uintptr_t base = mod_base();
     if (base) {
         *reinterpret_cast<uint8_t*>(base + kMotionTrailRva) &= ~0x18;
@@ -491,6 +511,10 @@ const char* trickster_action_name() {
         return g_active_action_name;
     }
     return "";
+}
+
+int trickster_dash_timer() {
+    return g_dash_timer;
 }
 
 void trickster_request_action(const XInputState* state) {
@@ -540,10 +564,24 @@ void trickster_update() {
         // Continuously suppress any gun shooting animation
         clear_shoot_state(body);
 
+        // Turn on actor shadow trail
+        *reinterpret_cast<uint16_t*>(body + 0x0E) |= 0x6000;
+        write_f32(body + 0x210, 0.0f);
+        write_f32(body + 0x214, 0.0f);
+        write_f32(body + 0x218, 0.0f);
+
         uintptr_t base = mod_base();
         if (base) {
             *reinterpret_cast<uint8_t*>(base + kMotionTrailRva) |= 0x18;
         }
+
+        // Maintain active dash motion throughout all dash frames so Dante never resets to idle
+        uint16_t cur_mot = *reinterpret_cast<uint16_t*>(body + 0xe56);
+        if (cur_mot == 0) {
+            play_actor_motion(body, kMotionDash);
+        }
+        *reinterpret_cast<uint16_t*>(body + 0xe56) = static_cast<uint16_t>(kMotionDash);
+        *reinterpret_cast<uint32_t*>(body + kMotionActiveRva) = kMotionDash;
 
         float cur_x = read_f32(body + kPosBaseRva);
         float cur_z = read_f32(body + kPosBaseRva + 8);
@@ -562,7 +600,8 @@ void trickster_update() {
 
         g_dash_timer--;
         if (g_dash_timer == 0) {
-            // Turn off colored motion trail
+            // Turn off actor shadow trail
+            *reinterpret_cast<uint16_t*>(body + 0x0E) &= ~0x6000;
             if (base) {
                 *reinterpret_cast<uint8_t*>(base + kMotionTrailRva) &= ~0x18;
             }
@@ -586,7 +625,7 @@ void trickster_update() {
             if (input_held) {
                 play_actor_motion(body, kMotionRun);
             } else {
-                play_actor_motion(body, kMotionLanding);
+                play_actor_motion(body, kMotionIdle);
             }
         }
     }
@@ -601,4 +640,9 @@ void trickster_update() {
             *reinterpret_cast<uint16_t*>(body + kHpDisplayRva) = g_protected_hp;
         }
     }
+}
+
+void trickster_dash_direction(float& dx, float& dz) {
+    dx = g_dash_dx;
+    dz = g_dash_dz;
 }
