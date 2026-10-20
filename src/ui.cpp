@@ -1493,12 +1493,29 @@ void overlay_on_pad(XInputState* state) {
     }
     WORD buttons = state->gamepad.buttons;
     g_buttons.store(buttons);
+    if (g_seek_pulse > 0) {
+        state->gamepad.leftX = 0;
+        state->gamepad.leftY = g_seek_stick;
+        state->gamepad.buttons = g_seek_word;
+        return;
+    }
+    bool held = g_capture.load() || g_inject_on.load() || g_wait_release.load() || g_seek;
+    if (held) {
+        state->gamepad.leftX = 0;
+        state->gamepad.leftY = 0;
+    }
     if (g_inject_on.load()) {
         state->gamepad.buttons = g_inject_buttons.load();
         return;
     }
-    if (g_capture.load()) {
+    if (g_wait_release.load()) {
         state->gamepad.buttons = static_cast<WORD>(buttons & ~kMenuButtons);
+        if ((buttons & kMenuButtons) == 0) {
+            g_wait_release.store(false);
+        }
+    }
+    if (g_capture.load()) {
+        state->gamepad.buttons = static_cast<WORD>(buttons & ~(kMenuButtons | 0x0010));
     }
 }
 
