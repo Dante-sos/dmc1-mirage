@@ -32,5 +32,8 @@ void mod_clear_mission();
 int mod_armed_mission();
 int mod_armed_mode();
 bool mod_in_game();
+uint8_t* mod_actor();
+uintptr_t mod_base();
+void mod_log(const char* fmt, ...);
 void overlay_install();
 void overlay_on_pad(XInputState* state);

@@ -1,4 +1,5 @@
 #include "mod.h"
+#include "style.h"
 
 #include <atomic>
 #include <cstdarg>
@@ -554,6 +555,10 @@ extern "C" void apply_weapon_requests() {
         g_want_ranged.store(false);
         return;
     }
+    style_update();
+    if (style_in_action()) {
+        g_want_ranged.store(false);
+    }
     if (g_want_melee.exchange(false)) {
         switch_melee();
     }
@@ -698,6 +703,29 @@ bool mod_in_game() {
     return in_game();
 }
 
+uint8_t* mod_actor() {
+    return actor();
+}
+
+uintptr_t mod_base() {
+    return g_base;
+}
+
+void mod_log(const char* fmt, ...) {
+    if (!g_log) {
+        return;
+    }
+    SYSTEMTIME st{};
+    GetLocalTime(&st);
+    std::fprintf(g_log, "%02u:%02u:%02u ", st.wHour, st.wMinute, st.wSecond);
+    va_list args;
+    va_start(args, fmt);
+    std::vfprintf(g_log, fmt, args);
+    va_end(args);
+    std::fputc('\n', g_log);
+    std::fflush(g_log);
+}
+
 void mod_start() {
     g_base = reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
     wchar_t path[MAX_PATH]{};
@@ -710,6 +738,7 @@ void mod_start() {
     read_ini();
     log_line("DMC1 switch loaded base=%p tap_ms=%d", reinterpret_cast<void*>(g_base), g_tap_ms);
     install_hooks();
+    style_init();
     overlay_install();
 }
 
@@ -721,6 +750,7 @@ void mod_on_get_state(DWORD user, XInputState* state) {
     if (!state || !g_hooks_ready) {
         return;
     }
+    style_on_pad(state);
     watch_trigger(state->gamepad.leftTrigger, g_left, g_want_melee);
     watch_trigger(state->gamepad.rightTrigger, g_right, g_want_ranged);
 }
