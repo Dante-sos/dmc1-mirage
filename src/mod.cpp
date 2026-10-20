@@ -652,9 +652,33 @@ void install_hooks() {
 void mod_arm_mission(int mission, int mode) {
     g_mission_staged.store(false);
     g_stage_tick = 0;
+    g_in_game_frames = 0;
+    g_logged_spawn = false;
     g_pending_mode.store(mode);
     g_pending_mission.store(mission);
-    log_line("armed mission %d mode %d", mission, mode);
+    uint8_t previous = 0;
+    write_mission_choice(mission, mode, previous);
+    auto slot = reinterpret_cast<uint8_t**>(g_base + kMenuConfigPtrRva);
+    uint8_t* config = slot ? *slot : nullptr;
+    log_line("armed mission %d mode %d menu %u", mission, mode, config ? config[0] : 0);
+}
+
+void mod_begin_mission() {
+    auto slot = reinterpret_cast<uint8_t**>(g_base + kMenuConfigPtrRva);
+    uint8_t* config = slot ? *slot : nullptr;
+    if (!config) {
+        log_line("mission start missing menu");
+        return;
+    }
+    int mission = g_pending_mission.load();
+    int mode = g_pending_mode.load();
+    if (mission < 1) {
+        return;
+    }
+    config[0x10] = static_cast<uint8_t>(mission);
+    config[0x0B] = static_cast<uint8_t>(mode);
+    g_start_requested.store(true);
+    log_line("mission start %d mode %d", mission, mode);
 }
 
 void mod_clear_mission() {
