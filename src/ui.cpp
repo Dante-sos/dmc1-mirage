@@ -80,15 +80,20 @@ int g_mission = 0;
 int g_mode = 1;
 int g_glyph_w[95] = {};
 
-enum class Screen { None, Title, Missions };
-Screen g_screen = Screen::None;
+enum class Screen { None, Launcher, Missions, BossRush, Settings, Title };
+Screen g_screen = Screen::Launcher;
+int g_launcher_index = 0;
 int g_title_index = 0;
 int g_game_index = 0;
 int g_menu_lock = 0;
 int g_title_miss = 0;
 int g_title_hits = 0;
 float g_menu_anchor = 0.662f;
-std::atomic<bool> g_capture{false};
+bool g_setting_hud_enabled = true;
+bool g_setting_fast_dash = true;
+bool g_setting_quick_switch = true;
+int g_settings_row = 0;
+std::atomic<bool> g_capture{true};
 std::atomic<bool> g_inject_on{false};
 bool g_inject_keep = false;
 std::atomic<bool> g_wait_release{false};
@@ -107,7 +112,7 @@ SHORT g_seek_stick = 0;
 bool g_seek_confirming = false;
 bool g_logged_menu = false;
 WORD g_prev_buttons = 0;
-bool g_key_down[7] = {};
+bool g_key_down[16] = {};
 
 using CreateFn = HRESULT(WINAPI*)(IDXGIAdapter*, D3D_DRIVER_TYPE, HMODULE, UINT, const D3D_FEATURE_LEVEL*, UINT, UINT, const DXGI_SWAP_CHAIN_DESC*, IDXGISwapChain**, ID3D11Device**, D3D_FEATURE_LEVEL*, ID3D11DeviceContext**);
 using PresentFn = HRESULT(STDMETHODCALLTYPE*)(IDXGISwapChain*, UINT, UINT);
@@ -699,53 +704,324 @@ void draw_background(std::vector<Vertex>& verts, float width, float height) {
     push_quad(verts, 0, 0, width, height, u0, v0, u1, v1, 1, 1, 1, 1);
 }
 
+constexpr int kLauncherItemCount = 6;
+const char* kLauncherItems[kLauncherItemCount] = {
+    "LOAD DATA",
+    "MISSION SELECT",
+    "BOSS RUSH",
+    "SETTINGS",
+    "START GAME",
+    "EXIT TO HD COLLECTION"
+};
+
+const char* kLauncherSubtext[kLauncherItemCount] = {
+    "Load saved game data and resume your adventure.",
+    "Select any mission from 1 to 23 and choose difficulty.",
+    "Consecutive boss trial against all bosses in DMC1.",
+    "Style Switcher key bindings, HUD display, and controls.",
+    "Start a new game from the prologue.",
+    "Quit Devil May Cry 1 and return to HD Collection launcher."
+};
+
 const char* kTitleItems[] = {"LOAD DATA", "MISSION SELECT", "NEW GAME", "OPTION"};
 constexpr float kTitleRows[] = {0.662f, 0.735f, 0.808f, 0.881f};
 
-void draw_title_menu(float width, float height) {
+void draw_launcher_menu(float width, float height) {
     std::vector<Vertex> verts;
-    verts.reserve(4000);
-    float scale = height / 860.0f;
-    if (scale < 0.7f) {
-        scale = 0.7f;
+    verts.reserve(5000);
+
+    if (g_bg_view) {
+        draw_background(verts, width, height);
+        submit(verts, width, height, 1.0f, g_bg_view);
+    } else {
+        draw_rect(verts, 0, 0, width, height, 0.05f, 0.02f, 0.02f, 1.0f);
+        submit(verts, width, height, 0.0f, g_font_view);
     }
-    if (scale > 1.65f) {
-        scale = 1.65f;
-    }
-    float tracking = 1.05f * scale;
-    float step = 0.052f;
-    float band_top = height * (g_menu_anchor - 0.034f);
-    float band_bot = height * (g_menu_anchor + step * 3.0f + 0.05f);
-    float band_w = width * 0.72f;
-    draw_rect(verts, (width - band_w) * 0.5f, band_top, band_w, band_bot - band_top, 0.0f, 0.0f, 0.0f, 1.0f);
-    for (int i = 0; i < 4; ++i) {
-        float item_w = text_width(kTitleItems[i], scale, tracking);
-        float x = (width - item_w) * 0.5f;
-        float y = height * (g_menu_anchor + step * static_cast<float>(i)) - static_cast<float>(kCell) * scale * 0.5f;
-        if (i == g_title_index) {
-            draw_text_outlined(verts, x, y, kTitleItems[i], scale, tracking, 1.0f, 0.98f, 0.9f, 1.0f);
-        } else if (i == 1) {
-            draw_text_outlined(verts, x, y, kTitleItems[i], scale, tracking, 0.78f, 0.7f, 0.48f, 1.0f);
+
+    // Dark gothic vignette overlay
+    draw_rect(verts, 0, 0, width, height, 0.02f, 0.01f, 0.02f, 0.70f);
+
+    float scale = height / 900.0f;
+    if (scale < 0.65f) scale = 0.65f;
+    if (scale > 1.55f) scale = 1.55f;
+
+    // Top Crimson Accent Banner
+    draw_rect(verts, 0, 0, width, 4.0f * scale, 0.85f, 0.12f, 0.18f, 1.0f);
+
+    // Header Title
+    const char* title_main = "DEVIL MAY CRY";
+    const char* title_sub = "CRIMSON LAUNCHER  //  STYLE SWITCH EDITION";
+
+    float title_scale = scale * 0.95f;
+    float title_track = 1.6f * scale;
+    float title_w = text_width(title_main, title_scale, title_track);
+    float title_x = (width - title_w) * 0.5f;
+    float title_y = height * 0.065f;
+    draw_text_outlined(verts, title_x, title_y, title_main, title_scale, title_track, 0.98f, 0.92f, 0.84f, 1.0f);
+
+    float sub_scale = scale * 0.38f;
+    float sub_track = 1.1f * scale;
+    float sub_w = text_width(title_sub, sub_scale, sub_track);
+    float sub_x = (width - sub_w) * 0.5f;
+    float sub_y = title_y + 42.0f * scale;
+    draw_text(verts, sub_x, sub_y, title_sub, sub_scale, sub_track, 0.88f, 0.20f, 0.22f, 1.0f);
+
+    // Decorative separator bar under title
+    float sep_w = width * 0.55f;
+    float sep_x = (width - sep_w) * 0.5f;
+    float sep_y = sub_y + 24.0f * scale;
+    draw_rect(verts, sep_x, sep_y, sep_w, 1.5f * scale, 0.75f, 0.18f, 0.20f, 0.70f);
+
+    // Center Menu Card
+    float card_w = width * 0.44f;
+    if (card_w < 440.0f * scale) card_w = 440.0f * scale;
+    float card_h = height * 0.62f;
+    float card_x = (width - card_w) * 0.5f;
+    float card_y = sep_y + 18.0f * scale;
+
+    // Card background panel
+    draw_rect(verts, card_x, card_y, card_w, card_h, 0.02f, 0.02f, 0.03f, 0.84f);
+    // Card crimson top accent line
+    draw_rect(verts, card_x, card_y, card_w, 2.5f * scale, 0.85f, 0.12f, 0.18f, 0.95f);
+    // Border lines
+    draw_rect(verts, card_x, card_y, 1.0f * scale, card_h, 0.25f, 0.08f, 0.10f, 0.60f);
+    draw_rect(verts, card_x + card_w - 1.0f * scale, card_y, 1.0f * scale, card_h, 0.25f, 0.08f, 0.10f, 0.60f);
+
+    // Menu Items
+    float item_area_top = card_y + 24.0f * scale;
+    float item_area_h = card_h - 100.0f * scale;
+    float row_h = item_area_h / static_cast<float>(kLauncherItemCount);
+    float row_y = item_area_top;
+    float item_scale = scale * 0.48f;
+    float item_track = 0.90f * scale;
+
+    for (int i = 0; i < kLauncherItemCount; ++i) {
+        bool selected = (i == g_launcher_index);
+        float text_y = row_y + (row_h - 32.0f * item_scale) * 0.5f;
+
+        if (selected) {
+            draw_rect(verts, card_x + 14.0f * scale, row_y + 2.0f * scale, card_w - 28.0f * scale, row_h - 4.0f * scale, 0.60f, 0.08f, 0.10f, 0.92f);
+            draw_rect(verts, card_x + 14.0f * scale, row_y + 2.0f * scale, 3.5f * scale, row_h - 4.0f * scale, 1.0f, 0.85f, 0.30f, 1.0f);
+
+            char label[64];
+            std::snprintf(label, sizeof(label), ">   %s", kLauncherItems[i]);
+            draw_text_outlined(verts, card_x + 30.0f * scale, text_y, label, item_scale, item_track, 1.0f, 0.98f, 0.92f, 1.0f);
+
+            if (i == 2) {
+                float rw = text_width(label, item_scale, item_track);
+                draw_text(verts, card_x + 34.0f * scale + rw, text_y + 2.0f * scale, "[COMING SOON]", item_scale * 0.78f, item_track * 0.8f, 1.0f, 0.78f, 0.25f, 1.0f);
+            }
         } else {
-            draw_text_outlined(verts, x, y, kTitleItems[i], scale, tracking, 0.55f, 0.53f, 0.5f, 1.0f);
-        }
-    }
-    int armed = mod_armed_mission();
-    if (armed > 0) {
-        const char* mode_name = "Normal";
-        int mode = mod_armed_mode();
-        for (int i = 0; i < 4; ++i) {
-            if (kModeValues[i] == mode) {
-                mode_name = kModeNames[i];
+            draw_text(verts, card_x + 38.0f * scale, text_y, kLauncherItems[i], item_scale, item_track, 0.72f, 0.68f, 0.65f, 1.0f);
+            if (i == 2) {
+                float rw = text_width(kLauncherItems[i], item_scale, item_track);
+                draw_text(verts, card_x + 46.0f * scale + rw, text_y + 2.0f * scale, "[COMING SOON]", item_scale * 0.78f, item_track * 0.8f, 0.75f, 0.55f, 0.20f, 0.8f);
             }
         }
-        char status[64];
-        std::snprintf(status, sizeof(status), "MISSION %d   %s", armed, mode_name);
-        float status_scale = scale * 0.62f;
-        float status_w = text_width(status, status_scale, tracking * 0.4f);
-        draw_text(verts, (width - status_w) * 0.5f, height * (g_menu_anchor - 0.055f), status, status_scale, tracking * 0.4f, 0.86f, 0.72f, 0.38f, 1.0f);
+
+        row_y += row_h;
     }
+
+    // Context / Subtext Box at bottom of card
+    float subbox_y = card_y + card_h - 68.0f * scale;
+    draw_rect(verts, card_x + 18.0f * scale, subbox_y, card_w - 36.0f * scale, 1.0f * scale, 0.50f, 0.15f, 0.18f, 0.60f);
+
+    float desc_scale = scale * 0.36f;
+    float desc_track = 0.5f * scale;
+    draw_text(verts, card_x + 24.0f * scale, subbox_y + 16.0f * scale, kLauncherSubtext[g_launcher_index], desc_scale, desc_track, 0.85f, 0.80f, 0.65f, 1.0f);
+
+    // Footer prompt
+    const char* footer = "[D-PAD / UP-DOWN] Navigate     [A / ENTER] Select     [F7] In-Game Menu";
+    float foot_scale = scale * 0.34f;
+    float foot_track = 0.6f * scale;
+    float foot_w = text_width(footer, foot_scale, foot_track);
+    draw_text(verts, (width - foot_w) * 0.5f, height * 0.94f, footer, foot_scale, foot_track, 0.60f, 0.58f, 0.55f, 1.0f);
+
     submit(verts, width, height, 0.0f, g_font_view);
+}
+
+void draw_boss_rush_screen(float width, float height) {
+    std::vector<Vertex> verts;
+    verts.reserve(5000);
+
+    if (g_bg_view) {
+        draw_background(verts, width, height);
+        submit(verts, width, height, 1.0f, g_bg_view);
+    } else {
+        draw_rect(verts, 0, 0, width, height, 0.05f, 0.02f, 0.02f, 1.0f);
+        submit(verts, width, height, 0.0f, g_font_view);
+    }
+
+    draw_rect(verts, 0, 0, width, height, 0.02f, 0.01f, 0.02f, 0.72f);
+
+    float scale = height / 900.0f;
+    if (scale < 0.65f) scale = 0.65f;
+    if (scale > 1.55f) scale = 1.55f;
+
+    draw_rect(verts, 0, 0, width, 4.0f * scale, 0.85f, 0.12f, 0.18f, 1.0f);
+
+    float card_w = width * 0.56f;
+    if (card_w < 550.0f * scale) card_w = 550.0f * scale;
+    float card_h = height * 0.80f;
+    float card_x = (width - card_w) * 0.5f;
+    float card_y = height * 0.08f;
+
+    draw_rect(verts, card_x, card_y, card_w, card_h, 0.02f, 0.02f, 0.03f, 0.88f);
+    draw_rect(verts, card_x, card_y, card_w, 2.5f * scale, 0.85f, 0.12f, 0.18f, 0.95f);
+
+    float title_scale = scale * 0.68f;
+    float track = 0.8f * scale;
+    draw_text_outlined(verts, card_x + 30.0f * scale, card_y + 22.0f * scale, "BOSS RUSH MODE", title_scale, track, 0.98f, 0.92f, 0.80f, 1.0f);
+    draw_text(verts, card_x + 30.0f * scale, card_y + 56.0f * scale, "GAUNTLET OF MALICE  //  UNDER ACTIVE DEVELOPMENT", scale * 0.38f, track, 0.95f, 0.65f, 0.20f, 1.0f);
+
+    draw_rect(verts, card_x + 30.0f * scale, card_y + 86.0f * scale, card_w - 60.0f * scale, 1.5f * scale, 0.70f, 0.15f, 0.18f, 0.70f);
+
+    // Status box
+    float sb_y = card_y + 102.0f * scale;
+    draw_rect(verts, card_x + 30.0f * scale, sb_y, card_w - 60.0f * scale, 38.0f * scale, 0.40f, 0.06f, 0.08f, 0.85f);
+    draw_text(verts, card_x + 44.0f * scale, sb_y + 9.0f * scale, "STATUS: COMING SOON IN FUTURE DMC1 SWITCH UPDATE", scale * 0.40f, track, 1.0f, 0.88f, 0.35f, 1.0f);
+
+    float text_y = sb_y + 56.0f * scale;
+    float body_sc = scale * 0.38f;
+    draw_text(verts, card_x + 32.0f * scale, text_y, "Consecutive combat trial featuring all 5 major DMC1 bosses:", body_sc, track, 0.88f, 0.84f, 0.80f, 1.0f);
+    text_y += 30.0f * scale;
+
+    const char* bosses[] = {
+        "1.  PHANTOM       - Magma Scorpion of Mallet Castle",
+        "2.  GRIFFON        - Winged Beast of Lightning & Wind",
+        "3.  NELO ANGELO   - The Dark Knight Duel",
+        "4.  NIGHTMARE     - Living Bioweapon Fluid Core",
+        "5.  MUNDUS         - Lord of the Underworld Finale"
+    };
+
+    for (const char* b : bosses) {
+        draw_rect(verts, card_x + 36.0f * scale, text_y - 2.0f * scale, card_w - 72.0f * scale, 24.0f * scale, 0.08f, 0.04f, 0.05f, 0.70f);
+        draw_text(verts, card_x + 48.0f * scale, text_y + 2.0f * scale, b, body_sc * 0.95f, track * 0.7f, 0.95f, 0.80f, 0.50f, 1.0f);
+        text_y += 32.0f * scale;
+    }
+
+    text_y += 8.0f * scale;
+    draw_text(verts, card_x + 32.0f * scale, text_y, "Features being implemented:", body_sc, track, 0.80f, 0.78f, 0.75f, 1.0f);
+    text_y += 24.0f * scale;
+    draw_text(verts, card_x + 44.0f * scale, text_y, "* Continuous boss transitions with persistent health bar", body_sc * 0.9f, track * 0.6f, 0.70f, 0.68f, 0.65f, 1.0f);
+    text_y += 22.0f * scale;
+    draw_text(verts, card_x + 44.0f * scale, text_y, "* Real-time style rank progression and speedrun timer", body_sc * 0.9f, track * 0.6f, 0.70f, 0.68f, 0.65f, 1.0f);
+    text_y += 22.0f * scale;
+    draw_text(verts, card_x + 44.0f * scale, text_y, "* Hot-swapping Trickster, Swordmaster, Gunslinger, RoyalGuard", body_sc * 0.9f, track * 0.6f, 0.70f, 0.68f, 0.65f, 1.0f);
+
+    float btn_y = card_y + card_h - 48.0f * scale;
+    draw_rect(verts, card_x + 30.0f * scale, btn_y, card_w - 60.0f * scale, 34.0f * scale, 0.55f, 0.06f, 0.08f, 0.90f);
+    const char* ret_text = "<  [B / ESC / A / ENTER] Return to Launcher  >";
+    float rw = text_width(ret_text, scale * 0.40f, track);
+    draw_text(verts, card_x + (card_w - rw) * 0.5f, btn_y + 7.0f * scale, ret_text, scale * 0.40f, track, 1.0f, 0.98f, 0.92f, 1.0f);
+
+    submit(verts, width, height, 0.0f, g_font_view);
+}
+
+void draw_settings_screen(float width, float height) {
+    std::vector<Vertex> verts;
+    verts.reserve(6000);
+
+    if (g_bg_view) {
+        draw_background(verts, width, height);
+        submit(verts, width, height, 1.0f, g_bg_view);
+    } else {
+        draw_rect(verts, 0, 0, width, height, 0.05f, 0.02f, 0.02f, 1.0f);
+        submit(verts, width, height, 0.0f, g_font_view);
+    }
+
+    draw_rect(verts, 0, 0, width, height, 0.02f, 0.01f, 0.02f, 0.72f);
+
+    float scale = height / 900.0f;
+    if (scale < 0.65f) scale = 0.65f;
+    if (scale > 1.55f) scale = 1.55f;
+
+    draw_rect(verts, 0, 0, width, 4.0f * scale, 0.85f, 0.12f, 0.18f, 1.0f);
+
+    float card_w = width * 0.58f;
+    if (card_w < 560.0f * scale) card_w = 560.0f * scale;
+    float card_h = height * 0.82f;
+    float card_x = (width - card_w) * 0.5f;
+    float card_y = height * 0.07f;
+
+    draw_rect(verts, card_x, card_y, card_w, card_h, 0.02f, 0.02f, 0.03f, 0.88f);
+    draw_rect(verts, card_x, card_y, card_w, 2.5f * scale, 0.85f, 0.12f, 0.18f, 0.95f);
+
+    float title_scale = scale * 0.68f;
+    float track = 0.8f * scale;
+    draw_text_outlined(verts, card_x + 30.0f * scale, card_y + 20.0f * scale, "SETTINGS & CONTROLS", title_scale, track, 0.98f, 0.92f, 0.80f, 1.0f);
+    draw_text(verts, card_x + 30.0f * scale, card_y + 54.0f * scale, "CRIMSON STYLE SWITCH CONFIGURATION", scale * 0.38f, track, 0.85f, 0.20f, 0.22f, 1.0f);
+
+    draw_rect(verts, card_x + 30.0f * scale, card_y + 80.0f * scale, card_w - 60.0f * scale, 1.5f * scale, 0.70f, 0.15f, 0.18f, 0.70f);
+
+    // Section 1: Gameplay Options
+    float cur_y = card_y + 94.0f * scale;
+    draw_text(verts, card_x + 32.0f * scale, cur_y, "GAMEPLAY OPTIONS", scale * 0.44f, track, 0.95f, 0.85f, 0.45f, 1.0f);
+    cur_y += 28.0f * scale;
+
+    const char* toggle_names[3] = {
+        "Style HUD Display",
+        "Trickster Fast Dash",
+        "Weapon Quick Switch"
+    };
+
+    const char* toggle_vals[3] = {
+        g_setting_hud_enabled ? "<   ON   >" : "<   OFF   >",
+        g_setting_fast_dash ? "<  ENABLED  >" : "<  DISABLED  >",
+        g_setting_quick_switch ? "<  ENABLED  >" : "<  DISABLED  >"
+    };
+
+    for (int i = 0; i < 3; ++i) {
+        bool selected = (i == g_settings_row);
+        float row_h = 30.0f * scale;
+        if (selected) {
+            draw_rect(verts, card_x + 30.0f * scale, cur_y - 2.0f * scale, card_w - 60.0f * scale, row_h, 0.55f, 0.08f, 0.10f, 0.90f);
+            draw_text(verts, card_x + 44.0f * scale, cur_y + 3.0f * scale, toggle_names[i], scale * 0.40f, track, 1.0f, 0.98f, 0.90f, 1.0f);
+            float vw = text_width(toggle_vals[i], scale * 0.40f, track);
+            draw_text(verts, card_x + card_w - 50.0f * scale - vw, cur_y + 3.0f * scale, toggle_vals[i], scale * 0.40f, track, 1.0f, 0.95f, 0.45f, 1.0f);
+        } else {
+            draw_text(verts, card_x + 44.0f * scale, cur_y + 3.0f * scale, toggle_names[i], scale * 0.40f, track, 0.75f, 0.72f, 0.68f, 1.0f);
+            float vw = text_width(toggle_vals[i], scale * 0.40f, track);
+            draw_text(verts, card_x + card_w - 50.0f * scale - vw, cur_y + 3.0f * scale, toggle_vals[i], scale * 0.40f, track, 0.70f, 0.68f, 0.65f, 1.0f);
+        }
+        cur_y += 34.0f * scale;
+    }
+
+    cur_y += 10.0f * scale;
+    draw_rect(verts, card_x + 30.0f * scale, cur_y, card_w - 60.0f * scale, 1.0f * scale, 0.40f, 0.10f, 0.12f, 0.60f);
+    cur_y += 16.0f * scale;
+
+    // Section 2: Controls Guide
+    draw_text(verts, card_x + 32.0f * scale, cur_y, "STYLE SWITCH CONTROLS (D-PAD / KEYBOARD)", scale * 0.44f, track, 0.95f, 0.85f, 0.45f, 1.0f);
+    cur_y += 28.0f * scale;
+
+    const char* controls[] = {
+        "[D-PAD UP]    / [Z]  -  TRICKSTER   (Dash, Sky Star, Air Trick)",
+        "[D-PAD RIGHT] / [X]  -  SWORDMASTER (Advanced melee combat)",
+        "[D-PAD LEFT]  / [C]  -  GUNSLINGER  (Firearm special abilities)",
+        "[D-PAD DOWN]  / [V]  -  ROYALGUARD  (Guard block & Release)",
+        "[B / CIRCLE]  / [L]  -  STYLE ACTION (Execute style move)",
+        "[LEFT TRIGGER TAP]   -  CYCLE MELEE (Force Edge / Alastor / Ifrit / Sparda)",
+        "[RIGHT TRIGGER TAP]  -  CYCLE GUNS   (Handguns / Shotgun / Grenadegun / Nightmare-B)"
+    };
+
+    for (const char* c : controls) {
+        draw_text(verts, card_x + 40.0f * scale, cur_y, c, scale * 0.36f, track * 0.7f, 0.85f, 0.80f, 0.75f, 1.0f);
+        cur_y += 24.0f * scale;
+    }
+
+    // Return button
+    float btn_y = card_y + card_h - 48.0f * scale;
+    draw_rect(verts, card_x + 30.0f * scale, btn_y, card_w - 60.0f * scale, 34.0f * scale, 0.55f, 0.06f, 0.08f, 0.90f);
+    const char* ret_text = "<  [UP / DOWN] Select    [LEFT / RIGHT / ENTER] Toggle    [B / ESC] Return  >";
+    float rw = text_width(ret_text, scale * 0.38f, track * 0.6f);
+    draw_text(verts, card_x + (card_w - rw) * 0.5f, btn_y + 7.0f * scale, ret_text, scale * 0.38f, track * 0.6f, 1.0f, 0.98f, 0.92f, 1.0f);
+
+    submit(verts, width, height, 0.0f, g_font_view);
+}
+
+void draw_title_menu(float width, float height) {
+    draw_launcher_menu(width, height);
 }
 
 void draw_mission_screen(float width, float height) {
@@ -834,10 +1110,8 @@ void draw_style_hud(float width, float height) {
     float x = 36.0f * scale;
     float y = height - box_h - 26.0f * scale;
 
-    // Dark translucent backing
     draw_rect(verts, x, y, box_w, box_h, 0.04f, 0.04f, 0.06f, 0.72f);
 
-    // Accent line along top edge
     float r = 1.0f, g = 0.84f, b = 0.22f; // Trickster Gold
     if (style == StyleType::RoyalGuard) {
         r = 0.92f; g = 0.22f; b = 0.22f;
@@ -853,11 +1127,17 @@ void draw_style_hud(float width, float height) {
 }
 
 void draw_screen(float width, float height) {
-    if (g_screen == Screen::Title) {
-        draw_title_menu(width, height);
+    if (g_screen == Screen::Launcher) {
+        draw_launcher_menu(width, height);
     } else if (g_screen == Screen::Missions) {
         draw_mission_screen(width, height);
-    } else if (mod_in_game()) {
+    } else if (g_screen == Screen::BossRush) {
+        draw_boss_rush_screen(width, height);
+    } else if (g_screen == Screen::Settings) {
+        draw_settings_screen(width, height);
+    } else if (g_screen == Screen::Title) {
+        draw_launcher_menu(width, height);
+    } else if (mod_in_game() && g_setting_hud_enabled) {
         draw_style_hud(width, height);
     }
 }
@@ -961,22 +1241,20 @@ void finish_load_seek() {
     g_wait_release.store(true);
 }
 
-void show_title() {
-    if (g_screen == Screen::Title) {
-        return;
-    }
-    g_game_index = 0;
-    g_title_index = 0;
-    g_screen = Screen::Title;
+void show_launcher() {
+    g_launcher_index = 0;
+    g_screen = Screen::Launcher;
     g_capture.store(true);
-    g_menu_lock = 20;
-    g_title_miss = 0;
-    g_title_hits = 0;
+    g_menu_lock = 10;
     g_prev_buttons = g_buttons.load();
     if (!g_logged_menu) {
         g_logged_menu = true;
-        log_line("title menu shown");
+        log_line("launcher menu shown");
     }
+}
+
+void show_title() {
+    show_launcher();
 }
 
 void hide_menu() {
@@ -1166,7 +1444,7 @@ bool split_bottom_labels(const uint8_t* pixels, int width, int height, int pitch
 }
 
 void classify_probe(const uint8_t* pixels, int width, int height, int pitch) {
-    if (g_screen == Screen::Missions || g_inject_on.load() || g_probe_cooldown > 0) {
+    if (g_screen != Screen::None || g_inject_on.load() || g_probe_cooldown > 0) {
         return;
     }
     if (width < 16 || height < 16) {
@@ -1221,19 +1499,18 @@ void update_menu_input() {
     WORD buttons = g_buttons.load();
     WORD pressed = buttons & ~g_prev_buttons;
     g_prev_buttons = buttons;
-    bool up = (pressed & 0x0001) || edge_key(0, VK_UP);
-    bool down = (pressed & 0x0002) || edge_key(1, VK_DOWN);
-    bool left = (pressed & 0x0004) || edge_key(2, VK_LEFT);
-    bool right = (pressed & 0x0008) || edge_key(3, VK_RIGHT);
-    bool confirm = (pressed & 0x1000) || edge_key(4, VK_RETURN);
-    bool close = (pressed & 0x2000) || edge_key(5, VK_ESCAPE);
+    bool up = (pressed & 0x0001) || edge_key(0, VK_UP) || edge_key(7, 'W');
+    bool down = (pressed & 0x0002) || edge_key(1, VK_DOWN) || edge_key(8, 'S');
+    bool left = (pressed & 0x0004) || edge_key(2, VK_LEFT) || edge_key(9, 'A');
+    bool right = (pressed & 0x0008) || edge_key(3, VK_RIGHT) || edge_key(10, 'D');
+    bool confirm = (pressed & 0x1000) || edge_key(4, VK_RETURN) || edge_key(11, VK_SPACE);
+    bool close = (pressed & 0x2000) || edge_key(5, VK_ESCAPE) || edge_key(12, VK_BACK);
     bool reopen = edge_key(6, VK_F7);
     if (g_inject_on.load() || g_seek) {
         return;
     }
     if (reopen) {
-        g_screen = Screen::Missions;
-        g_capture.store(true);
+        show_launcher();
         return;
     }
     if (g_screen == Screen::None) {
@@ -1245,30 +1522,74 @@ void update_menu_input() {
         g_menu_lock--;
         return;
     }
-    if (g_screen == Screen::Title) {
-        if (up && g_title_index > 0) {
-            g_title_index--;
+
+    if (g_screen == Screen::Launcher || g_screen == Screen::Title) {
+        if (up && g_launcher_index > 0) {
+            g_launcher_index--;
         }
-        if (down && g_title_index < 3) {
-            g_title_index++;
+        if (down && g_launcher_index < kLauncherItemCount - 1) {
+            g_launcher_index++;
         }
-        if (close) {
-            WORD steps[2] = {0x2000, 0};
-            g_capture.store(true);
-            start_inject(steps, 2, false);
-        } else if (confirm) {
-            if (g_title_index == 1) {
-                g_screen = Screen::Missions;
-            } else if (g_title_index == 0) {
-                activate_game_item(0);
-            } else if (g_title_index == 2) {
-                activate_game_item(1);
-            } else {
-                activate_game_item(2);
+        if (confirm) {
+            switch (g_launcher_index) {
+                case 0: // LOAD DATA
+                    mod_release_hold();
+                    begin_load_seek();
+                    g_screen = Screen::None;
+                    break;
+                case 1: // MISSION SELECT
+                    g_screen = Screen::Missions;
+                    break;
+                case 2: // BOSS RUSH
+                    g_screen = Screen::BossRush;
+                    break;
+                case 3: // SETTINGS
+                    g_screen = Screen::Settings;
+                    break;
+                case 4: // START GAME
+                    mod_arm_mission(1, kModeValues[g_mode]);
+                    g_screen = Screen::None;
+                    g_capture.store(false);
+                    g_wait_release.store(true);
+                    mod_begin_mission();
+                    break;
+                case 5: // EXIT TO HD COLLECTION
+                    ExitProcess(0);
+                    break;
             }
         }
         return;
     }
+
+    if (g_screen == Screen::BossRush) {
+        if (close || confirm) {
+            g_screen = Screen::Launcher;
+        }
+        return;
+    }
+
+    if (g_screen == Screen::Settings) {
+        if (up && g_settings_row > 0) {
+            g_settings_row--;
+        }
+        if (down && g_settings_row < 2) {
+            g_settings_row++;
+        }
+        if (left || right || confirm) {
+            if (g_settings_row == 0) {
+                g_setting_hud_enabled = !g_setting_hud_enabled;
+            } else if (g_settings_row == 1) {
+                g_setting_fast_dash = !g_setting_fast_dash;
+            } else if (g_settings_row == 2) {
+                g_setting_quick_switch = !g_setting_quick_switch;
+            }
+        }
+        if (close) {
+            g_screen = Screen::Launcher;
+        }
+        return;
+    }
+
     if (g_screen != Screen::Missions) {
         return;
     }
@@ -1294,8 +1615,7 @@ void update_menu_input() {
         return;
     }
     if (close) {
-        g_screen = Screen::Title;
-        g_title_index = 1;
+        g_screen = Screen::Launcher;
     }
 }
 
@@ -1513,7 +1833,13 @@ LRESULT CALLBACK keyboard_hook(int code, WPARAM wp, LPARAM lp) {
             case VK_LEFT:
             case VK_RIGHT:
             case VK_RETURN:
+            case VK_SPACE:
             case VK_ESCAPE:
+            case VK_BACK:
+            case 'W':
+            case 'S':
+            case 'A':
+            case 'D':
                 return 1;
             }
         }

@@ -37,3 +37,4 @@ uintptr_t mod_base();
 void mod_log(const char* fmt, ...);
 void overlay_install();
 void overlay_on_pad(XInputState* state);
+void mod_release_hold();

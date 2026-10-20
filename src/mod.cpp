@@ -691,6 +691,15 @@ void mod_clear_mission() {
     log_line("mission override cleared");
 }
 
+void mod_release_hold() {
+    uint8_t* event = event_data();
+    if (event) {
+        event[0] = 0;
+    }
+    g_hold_event.store(false);
+    log_line("mod event hold released");
+}
+
 int mod_armed_mission() {
     return g_pending_mission.load();
 }
