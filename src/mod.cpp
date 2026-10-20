@@ -384,6 +384,15 @@ void write_mission_room(int mission) {
     std::memcpy(reinterpret_cast<void*>(g_base + kSpawnPosRva), pos, sizeof(pos));
 }
 
+extern "C" void apply_pending_at_menu() {
+    auto slot = reinterpret_cast<uint8_t**>(g_base + kMenuConfigPtrRva);
+    uint8_t* config = slot ? *slot : nullptr;
+    if (!g_logged_title_loop && config) {
+        g_logged_title_loop = true;
+        log_line("title loop active state %u", config[0]);
+    }
+}
+
 void stage_chosen_mission() {
     int mission = g_pending_mission.load();
     int mode = g_pending_mode.load();
@@ -414,6 +423,41 @@ void stage_chosen_mission() {
     }
     write_mission_room(mission);
     log_line("mission room staged %d stage %u room %u", mission, stage, room);
+}
+
+extern "C" void apply_pending_at_event() {
+    uint8_t* event = event_data();
+    if (!g_logged_event_loop && event) {
+        g_logged_event_loop = true;
+        log_line("event loop active state %u", event[0]);
+    }
+    if (!event) {
+        return;
+    }
+    if (g_start_requested.load() && (g_hold_event.load() || event[0] == 0)) {
+        stage_chosen_mission();
+        event[0] = 0;
+        g_hold_event.store(false);
+        g_start_requested.store(false);
+        log_line("event loop launch %d", g_pending_mission.load());
+        return;
+    }
+    if (event[0] == 0 && !g_start_requested.load()) {
+        event[0] = 4;
+        g_hold_event.store(true);
+    }
+}
+
+extern "C" void apply_pending_at_enter() {
+    int mission = g_pending_mission.load();
+    if (mission < 1) {
+        return;
+    }
+    uint8_t previous = 0;
+    write_mission_choice(mission, g_pending_mode.load(), previous);
+    mark_mission_start(session());
+    g_mission_staged.store(true);
+    log_line("mission enter %d was %u", mission, previous);
 }
 
 const char* name_for(const uint8_t* ids, const char* const* names, size_t count, uint8_t id) {
