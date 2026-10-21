@@ -265,10 +265,10 @@ void place_mission_spawn(int mission) {
     float pos[4] = {};
     if (g_is_the_void.load()) {
         stage = 1;
-        room = 22;
+        room = 20;
         pos[0] = 0.0f;
         pos[1] = 10.0f;
-        pos[2] = -500.0f;
+        pos[2] = 0.0f;
         pos[3] = 0.0f;
     } else {
         std::memcpy(&stage, entry, sizeof(stage));
@@ -318,7 +318,7 @@ bool spawn_matches(int mission) {
     uint32_t current_room = 0;
     if (g_is_the_void.load()) {
         stage = 1;
-        room = 22;
+        room = 20;
     } else {
         std::memcpy(&stage, entry, sizeof(stage));
         std::memcpy(&room, entry + 4, sizeof(room));
@@ -348,7 +348,7 @@ void force_pending_mission(bool place) {
     write_mission_choice(mission, mode, previous);
     uint8_t* data = session();
     mark_mission_start(data);
-    if (place && !spawn_matches(mission)) {
+    if ((place || g_is_the_void.load()) && !spawn_matches(mission)) {
         place_mission_spawn(mission);
     }
     g_stage_tick = GetTickCount();
@@ -365,7 +365,7 @@ extern "C" void apply_pending_at_start() {
     if (data) {
         previous = data[kMissionOffset];
     }
-    force_pending_mission(false);
+    force_pending_mission(true);
     log_line("mission staged from %u to %d", previous, mission);
 }
 
@@ -393,10 +393,10 @@ void write_mission_room(int mission) {
     float pos[4] = {};
     if (g_is_the_void.load()) {
         stage = 1;
-        room = 22;
+        room = 20;
         pos[0] = 0.0f;
         pos[1] = 10.0f;
-        pos[2] = -500.0f;
+        pos[2] = 0.0f;
         pos[3] = 0.0f;
     } else {
         std::memcpy(&stage, entry, sizeof(stage));
@@ -442,9 +442,16 @@ extern "C" void apply_pending_at_menu() {
         // Same writes as the native New Game / difficulty confirm (0x3f9180..0x3f919c).
         config[0x10] = static_cast<uint8_t>(mission);
         config[0x0B] = static_cast<uint8_t>(mode);
-        write_u32(config, 6);
-        config[0x0D] = 0;
-        log_line("title menu -> new game mission %d mode %d", mission, mode);
+        if (g_is_the_void.load()) {
+            config[1] = 0;
+            write_u32(config, 7);
+            config[0x0D] = 1;
+            log_line("title menu -> direct to the void (state 7)");
+        } else {
+            write_u32(config, 6);
+            config[0x0D] = 0;
+            log_line("title menu -> new game mission %d mode %d", mission, mode);
+        }
     } else if (request == 2) {
         // Same writes as the native Load confirm (0x3f8cfa..0x3f8d00).
         write_u32(config, 9);
@@ -471,10 +478,10 @@ void stage_chosen_mission() {
     float pos[4] = {};
     if (g_is_the_void.load()) {
         stage = 1;
-        room = 22;
+        room = 20;
         pos[0] = 0.0f;
         pos[1] = 10.0f;
-        pos[2] = -500.0f;
+        pos[2] = 0.0f;
         pos[3] = 0.0f;
     } else {
         std::memcpy(&stage, entry, sizeof(stage));
@@ -526,6 +533,9 @@ extern "C" void apply_pending_at_enter() {
     uint8_t previous = 0;
     write_mission_choice(mission, g_pending_mode.load(), previous);
     mark_mission_start(session());
+    if (g_is_the_void.load()) {
+        place_mission_spawn(mission);
+    }
     g_mission_staged.store(true);
     log_line("mission enter %d was %u", mission, previous);
 }
@@ -610,6 +620,25 @@ void keep_chosen_mission() {
     }
     if (in_game()) {
         g_in_game_frames++;
+        if (g_is_the_void.load() && g_in_game_frames <= 15) {
+            uint8_t* body = actor();
+            if (body) {
+                const float x = 0.0f;
+                const float y = 10.0f;
+                const float z = 0.0f;
+                const float facing = 0.0f;
+                for (uintptr_t offset : {uintptr_t{0x1AC0}, uintptr_t{0x1E0}, uintptr_t{0x170}}) {
+                    write_f32(body + offset, x);
+                }
+                for (uintptr_t offset : {uintptr_t{0x1AC4}, uintptr_t{0x1E4}, uintptr_t{0x174}}) {
+                    write_f32(body + offset, y);
+                }
+                for (uintptr_t offset : {uintptr_t{0x1AC8}, uintptr_t{0x1E8}, uintptr_t{0x178}}) {
+                    write_f32(body + offset, z);
+                }
+                write_f32(body + 0x124, facing);
+            }
+        }
     }
     if (g_in_game_frames > 45) {
         g_pending_mission.store(-1);
@@ -630,13 +659,10 @@ void void_update_frame() {
             max_hp = 3000;
         }
         *reinterpret_cast<uint16_t*>(player + 0x1BCE) = max_hp;
-        *reinterpret_cast<uint16_t*>(player + 0x1BC8) = max_hp;
-        *reinterpret_cast<uint16_t*>(player + 0x1BD2) = max_hp;
-        *reinterpret_cast<uint16_t*>(player + 0x1BD4) = max_hp;
 
-        // 2. Maintain full Devil Trigger (10 runes & max gauge)
+        // 2. Maintain full Devil Trigger (10 runes)
         *reinterpret_cast<uint16_t*>(player + 0x1BD8) = 10;
-        *reinterpret_cast<uint32_t*>(player + 0x1C00) = 10000;
+        *reinterpret_cast<uint16_t*>(player + 0x1BD6) = 10;
 
         // 3. F5 key shortcut to reset position to arena center
         bool key_f5 = (GetAsyncKeyState(VK_F5) & 0x8000) != 0;
@@ -644,7 +670,7 @@ void void_update_frame() {
         if (key_f5 && !s_prev_f5) {
             float rx = 0.0f;
             float ry = 10.0f;
-            float rz = -500.0f;
+            float rz = 0.0f;
             float rfacing = 0.0f;
             for (uintptr_t offset : {uintptr_t{0x1AC0}, uintptr_t{0x1E0}, uintptr_t{0x170}}) {
                 write_f32(player + offset, rx);
@@ -669,9 +695,10 @@ void void_update_frame() {
                 auto ptr_val = reinterpret_cast<uintptr_t>(e);
                 if (ptr_val < 0x10000 || ptr_val > 0x7FFFFFFFFFFFull || (ptr_val & 7) != 0) continue;
 
-                uint16_t* ehp = reinterpret_cast<uint16_t*>(e + 0x1BC8);
+                uint16_t* ehp = reinterpret_cast<uint16_t*>(e + 0x1BCE);
+                uint16_t* emax = reinterpret_cast<uint16_t*>(e + 0x1BD0);
                 if (*ehp > 0 && *ehp < 2000) {
-                    *ehp = 10000;
+                    *ehp = (*emax > 0 && *emax <= 30000) ? *emax : 5000;
                 }
             }
         }
@@ -928,7 +955,7 @@ void mod_on_get_state(DWORD user, XInputState* state) {
             if (player) {
                 float rx = 0.0f;
                 float ry = 10.0f;
-                float rz = -500.0f;
+                float rz = 0.0f;
                 float rfacing = 0.0f;
                 for (uintptr_t offset : {uintptr_t{0x1AC0}, uintptr_t{0x1E0}, uintptr_t{0x170}}) {
                     write_f32(player + offset, rx);
