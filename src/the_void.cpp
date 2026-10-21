@@ -12,17 +12,17 @@ constexpr uintptr_t kEnemyCountRva        = 0x4CB6BA0;
 constexpr uintptr_t kEnemyListRva         = 0x4CB6BB0;
 constexpr uintptr_t kBriefingJumpRva      = 0x24FE5E;
 constexpr uintptr_t kRoomTableEntry22Rva  = 0x5165F8;
-constexpr uintptr_t kRoomTableEntry28Rva  = 0x516688;
+constexpr uintptr_t kRoomTableEntry26Rva  = 0x516658;
 constexpr uintptr_t kStage1Room22FileRva  = 0x5A45BC;
 
-// Colosseum Arena (r203.fsd) configuration:
+// Castle Courtyard Plaza (r201.fsd) configuration:
 // DMC1 checks at 0x140255D12: "cmp dword ptr [rcx + 0x274], 0x16" (room == 22) to recognize Mission 8.
-// By keeping room = 22 and remapping Room 22 to File 236 (r203.fsd) in Table 2
-// and Entry 28 (r203.fsd Colosseum Arena descriptor) in Table 1,
-// the engine natively runs Mission 8, loads the massive 300m Colosseum arena, spawns enemies, and provides 100% solid flat floor collision.
+// By keeping room = 22 and remapping Room 22 to File 234 (r201.fsd) in Table 2
+// and Entry 26 (r201.fsd Castle Courtyard Plaza descriptor) in Table 1,
+// the engine natively runs Mission 8, loads the massive 300m courtyard arena, spawns enemies, and provides 100% solid flat floor collision.
 constexpr uint32_t kVoidStage = 1;
 constexpr uint32_t kVoidRoom  = 22;
-constexpr float kVoidSpawnPos[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+constexpr float kVoidSpawnPos[4] = {1750.0f, 0.0f, -8300.0f, -1.21f};
 
 // Native Mission 8 starting configuration in r11d.fsd (Room 22 / 0x16)
 constexpr uint32_t kOrigStage = 1;
@@ -84,10 +84,10 @@ void void_patch_room_tables(bool enable) {
 
     // 1. Table 1: Room Descriptor Table (RVA 0x5163E8)
     // Entry 22 at base + 0x5165F8 (24 bytes) - originally r11d.fsd
-    // Entry 28 at base + 0x516688 (24 bytes) - r203.fsd Colosseum Arena descriptor
+    // Entry 26 at base + 0x516658 (24 bytes) - r201.fsd Castle Courtyard Plaza descriptor
     auto* entry22 = reinterpret_cast<uint8_t*>(base + kRoomTableEntry22Rva);
-    const auto* entry28 = reinterpret_cast<const uint8_t*>(base + kRoomTableEntry28Rva);
-    if (entry22 && entry28) {
+    const auto* entry26 = reinterpret_cast<const uint8_t*>(base + kRoomTableEntry26Rva);
+    if (entry22 && entry26) {
         DWORD old_prot = 0;
         if (VirtualProtect(entry22, 24, PAGE_EXECUTE_READWRITE, &old_prot)) {
             if (enable) {
@@ -95,8 +95,8 @@ void void_patch_room_tables(bool enable) {
                     std::memcpy(g_saved_room_entry_22, entry22, 24);
                     g_room_entry_saved = true;
                 }
-                std::memcpy(entry22, entry28, 24);
-                mod_log("the_void: patched Room Table Entry 22 with Entry 28 (r203.fsd Colosseum Arena descriptor)");
+                std::memcpy(entry22, entry26, 24);
+                mod_log("the_void: patched Room Table Entry 22 with Entry 26 (r201.fsd Castle Courtyard Plaza descriptor)");
             } else if (g_room_entry_saved) {
                 std::memcpy(entry22, g_saved_room_entry_22, 24);
                 mod_log("the_void: restored Room Table Entry 22");
@@ -107,7 +107,7 @@ void void_patch_room_tables(bool enable) {
 
     // 2. Table 2: Stage 1 File Index Table (RVA 0x5A4590)
     // Index 22 at base + 0x5A45BC (uint16_t)
-    // Needs to be 236 (r203.fsd) so the collision & geometry load properly
+    // Needs to be 234 (r201.fsd) so the collision & geometry load properly
     auto* file_idx22 = reinterpret_cast<uint16_t*>(base + kStage1Room22FileRva);
     if (file_idx22) {
         DWORD old_prot = 0;
@@ -117,8 +117,8 @@ void void_patch_room_tables(bool enable) {
                     g_saved_stage1_file_22 = *file_idx22;
                     g_stage1_file_saved = true;
                 }
-                *file_idx22 = 236;
-                mod_log("the_void: patched Stage 1 Room 22 file index to 236 (r203.fsd Colosseum Arena)");
+                *file_idx22 = 234;
+                mod_log("the_void: patched Stage 1 Room 22 file index to 234 (r201.fsd Castle Courtyard Plaza)");
             } else if (g_stage1_file_saved) {
                 *file_idx22 = g_saved_stage1_file_22;
                 mod_log("the_void: restored Stage 1 Room 22 file index to %u", g_saved_stage1_file_22);
@@ -144,7 +144,7 @@ void void_arm(int mode) {
     g_needs_initial_spawn.store(true);
     void_patch_mission_table(true);
     void_patch_briefing_skip(true);
-    mod_log("the_void: armed practice arena (mission 8, r203.fsd Colosseum Arena, mode %d)", mode);
+    mod_log("the_void: armed practice arena (mission 8, r201.fsd Castle Courtyard Plaza, mode %d)", mode);
 }
 
 void void_disarm() {
@@ -189,7 +189,7 @@ void void_patch_mission_table(bool enable) {
             std::memcpy(entry8, &stage, sizeof(stage));
             std::memcpy(entry8 + 4, &room, sizeof(room));
             std::memcpy(entry8 + 0x10, kVoidSpawnPos, sizeof(kVoidSpawnPos));
-            mod_log("the_void: mission table entry 8 patched: stage=%u room=%u (r10c.fsd Cathedral Arena)", stage, room);
+            mod_log("the_void: mission table entry 8 patched: stage=%u room=%u (r201.fsd Castle Courtyard Plaza)", stage, room);
         } else {
             uint32_t stage = kOrigStage;
             uint32_t room  = kOrigRoom;
