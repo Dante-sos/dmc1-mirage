@@ -12,9 +12,9 @@ constexpr uintptr_t kEnemyCountRva   = 0x4CB6BA0;
 constexpr uintptr_t kEnemyListRva    = 0x4CB6BB0;
 constexpr uintptr_t kBriefingJumpRva = 0x24FE5E;
 
-// Room table entry 24 (0x18) is r121.fsd (Rooftop / Phantom Boss Arena)
+// Stage 1 room 33 (0x21) is r121.fsd (Rooftop / Phantom Boss Arena, File 240)
 constexpr uint32_t kVoidStage = 1;
-constexpr uint32_t kVoidRoom  = 24;
+constexpr uint32_t kVoidRoom  = 33;
 constexpr float kVoidSpawnPos[4] = {0.0f, 10.0f, 0.0f, 3.01f};
 
 // Native Mission 8 starting configuration in r11d.fsd (Room 22 / 0x16)
@@ -69,7 +69,7 @@ void void_arm(int mode) {
     g_void_mode.store(mode);
     void_patch_mission_table(true);
     void_patch_briefing_skip(true);
-    mod_log("the_void: armed practice arena (mission 8, r121.fsd Room 24, mode %d)", mode);
+    mod_log("the_void: armed practice arena (mission 8, r121.fsd Room 33, mode %d)", mode);
 }
 
 void void_disarm() {
