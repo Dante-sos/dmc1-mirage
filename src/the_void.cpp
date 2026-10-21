@@ -12,14 +12,18 @@ constexpr uintptr_t kEnemyCountRva        = 0x4CB6BA0;
 constexpr uintptr_t kEnemyListRva         = 0x4CB6BB0;
 constexpr uintptr_t kBriefingJumpRva      = 0x24FE5E;
 constexpr uintptr_t kRoomTableEntry22Rva  = 0x5165F8;
-constexpr uintptr_t kRoomTableEntry30Rva  = 0x5166B8;
+constexpr uintptr_t kRoomTableEntry31Rva  = 0x5166D0;
 constexpr uintptr_t kStage1Room22FileRva  = 0x5A45BC;
 
-// Waterway Drainage Chamber (r205.fsd) configuration:
-// This is the iconic Mission 6 sewer/waterway arena with the portcullises, circular drainage pipes, and iron door.
-// By keeping room = 22 and remapping Room 22 to File 238 (r205.fsd) in Table 2
-// and Entry 30 (r205.fsd Waterway Chamber descriptor) in Table 1,
-// the engine natively runs Mission 8, loads the wide stone arena, spawns practice enemies, and provides 100% solid flat floor collision.
+// Rusty Key Drainage Chamber (r206.fsd) configuration:
+// This is the EXACT arena from the YouTube video at 1:00:
+// - Two heavy portcullis gates on the left wall
+// - Iron door with rivets in the corner
+// - Three circular sewer drainage pipes on the right wall
+// - Wide stone arena floor framed by Camera 35 looking down at (0, 0, 0)
+// By keeping room = 22 and remapping Room 22 to File 239 (r206.fsd) in Table 2
+// and Entry 31 (r206.fsd Rusty Key Chamber descriptor) in Table 1,
+// the engine natively runs Mission 8, loads the exact arena from the video, spawns practice enemies, and provides 100% solid flat floor collision.
 constexpr uint32_t kVoidStage = 1;
 constexpr uint32_t kVoidRoom  = 22;
 constexpr float kVoidSpawnPos[4] = {0.0f, 0.0f, 0.0f, 0.0f};
@@ -84,10 +88,10 @@ void void_patch_room_tables(bool enable) {
 
     // 1. Table 1: Room Descriptor Table (RVA 0x5163E8)
     // Entry 22 at base + 0x5165F8 (24 bytes) - originally r11d.fsd
-    // Entry 30 at base + 0x5166B8 (24 bytes) - r205.fsd Waterway Chamber descriptor
+    // Entry 31 at base + 0x5166D0 (24 bytes) - r206.fsd Rusty Key Chamber descriptor
     auto* entry22 = reinterpret_cast<uint8_t*>(base + kRoomTableEntry22Rva);
-    const auto* entry30 = reinterpret_cast<const uint8_t*>(base + kRoomTableEntry30Rva);
-    if (entry22 && entry30) {
+    const auto* entry31 = reinterpret_cast<const uint8_t*>(base + kRoomTableEntry31Rva);
+    if (entry22 && entry31) {
         DWORD old_prot = 0;
         if (VirtualProtect(entry22, 24, PAGE_EXECUTE_READWRITE, &old_prot)) {
             if (enable) {
@@ -95,8 +99,8 @@ void void_patch_room_tables(bool enable) {
                     std::memcpy(g_saved_room_entry_22, entry22, 24);
                     g_room_entry_saved = true;
                 }
-                std::memcpy(entry22, entry30, 24);
-                mod_log("the_void: patched Room Table Entry 22 with Entry 30 (r205.fsd Waterway Chamber descriptor)");
+                std::memcpy(entry22, entry31, 24);
+                mod_log("the_void: patched Room Table Entry 22 with Entry 31 (r206.fsd Rusty Key Chamber descriptor)");
             } else if (g_room_entry_saved) {
                 std::memcpy(entry22, g_saved_room_entry_22, 24);
                 mod_log("the_void: restored Room Table Entry 22");
@@ -107,7 +111,7 @@ void void_patch_room_tables(bool enable) {
 
     // 2. Table 2: Stage 1 File Index Table (RVA 0x5A4590)
     // Index 22 at base + 0x5A45BC (uint16_t)
-    // Needs to be 238 (r205.fsd) so the collision & geometry load properly
+    // Needs to be 239 (r206.fsd) so the collision & geometry load properly
     auto* file_idx22 = reinterpret_cast<uint16_t*>(base + kStage1Room22FileRva);
     if (file_idx22) {
         DWORD old_prot = 0;
@@ -117,8 +121,8 @@ void void_patch_room_tables(bool enable) {
                     g_saved_stage1_file_22 = *file_idx22;
                     g_stage1_file_saved = true;
                 }
-                *file_idx22 = 238;
-                mod_log("the_void: patched Stage 1 Room 22 file index to 238 (r205.fsd Waterway Chamber)");
+                *file_idx22 = 239;
+                mod_log("the_void: patched Stage 1 Room 22 file index to 239 (r206.fsd Rusty Key Chamber)");
             } else if (g_stage1_file_saved) {
                 *file_idx22 = g_saved_stage1_file_22;
                 mod_log("the_void: restored Stage 1 Room 22 file index to %u", g_saved_stage1_file_22);
@@ -144,7 +148,7 @@ void void_arm(int mode) {
     g_needs_initial_spawn.store(true);
     void_patch_mission_table(true);
     void_patch_briefing_skip(true);
-    mod_log("the_void: armed practice arena (mission 8, r205.fsd Waterway Chamber, mode %d)", mode);
+    mod_log("the_void: armed practice arena (mission 8, r206.fsd Rusty Key Drainage Chamber, mode %d)", mode);
 }
 
 void void_disarm() {
@@ -189,7 +193,7 @@ void void_patch_mission_table(bool enable) {
             std::memcpy(entry8, &stage, sizeof(stage));
             std::memcpy(entry8 + 4, &room, sizeof(room));
             std::memcpy(entry8 + 0x10, kVoidSpawnPos, sizeof(kVoidSpawnPos));
-            mod_log("the_void: mission table entry 8 patched: stage=%u room=%u (r205.fsd Waterway Chamber)", stage, room);
+            mod_log("the_void: mission table entry 8 patched: stage=%u room=%u (r206.fsd Rusty Key Drainage Chamber)", stage, room);
         } else {
             uint32_t stage = kOrigStage;
             uint32_t room  = kOrigRoom;
