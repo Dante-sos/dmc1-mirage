@@ -1,6 +1,7 @@
 #include "mod.h"
 #include "style.h"
 #include "the_void.h"
+#include "coordinates.h"
 
 #include <atomic>
 #include <cstdarg>
@@ -789,6 +790,14 @@ void mod_arm_the_void(int mode) {
 
 bool mod_is_the_void() {
     return void_is_active();
+}
+
+bool mod_get_player_coords(float& x, float& y, float& z) {
+    return coord_get_player_pos(x, y, z);
+}
+
+bool mod_format_coords(char* buf, size_t size) {
+    return coord_format_hud_string(buf, size);
 }
 
 void mod_begin_mission() {

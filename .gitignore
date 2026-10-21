@@ -8,3 +8,4 @@ build/
 payload.h
 .vs/
 __pycache__/
+.agents/

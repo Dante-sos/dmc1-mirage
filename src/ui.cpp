@@ -1135,7 +1135,11 @@ void draw_style_hud(float width, float height) {
 
     if (mod_is_the_void()) {
         const char* void_title = "THE VOID  //  COMBO ARENA";
-        const char* void_sub = "[F5 / SELECT] Reset Position  |  Infinite HP & DT";
+        char void_sub[128] = "[F5 / SELECT] Reset Position  |  Infinite HP & DT";
+        char coord_buf[64] = {};
+        if (mod_format_coords(coord_buf, sizeof(coord_buf))) {
+            std::snprintf(void_sub, sizeof(void_sub), "[F5] Reset | %s", coord_buf);
+        }
         float v_sc = scale * 0.38f;
         float v_sub_sc = scale * 0.30f;
         float v_track = 0.8f * scale;
@@ -1148,7 +1152,7 @@ void draw_style_hud(float width, float height) {
         draw_rect(verts, x, v_y, v_box_w, v_box_h, 0.03f, 0.02f, 0.04f, 0.78f);
         draw_rect(verts, x, v_y, v_box_w, 2.0f * scale, 0.85f, 0.15f, 0.20f, 0.95f);
         draw_text_outlined(verts, x + pad_x, v_y + pad_y, void_title, v_sc, v_track, 1.0f, 0.88f, 0.40f, 1.0f);
-        draw_text(verts, x + pad_x, v_y + pad_y + 18.0f * scale, void_sub, v_sub_sc, 0.4f * scale, 0.82f, 0.80f, 0.76f, 0.90f);
+        draw_text(verts, x + pad_x, v_y + pad_y + 18.0f * scale, void_sub, v_sub_sc, 0.4f * scale, 1.0f, 0.85f, 0.40f, 0.95f);
     }
 
     submit(verts, width, height, 0.0f, g_font_view);
