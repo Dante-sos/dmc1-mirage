@@ -39,3 +39,5 @@ void overlay_install();
 void overlay_on_pad(XInputState* state);
 void mod_release_hold();
 void mod_open_load_menu();
+void mod_arm_the_void(int mode);
+bool mod_is_the_void();

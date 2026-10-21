@@ -705,10 +705,11 @@ void draw_background(std::vector<Vertex>& verts, float width, float height) {
     push_quad(verts, 0, 0, width, height, u0, v0, u1, v1, 1, 1, 1, 1);
 }
 
-constexpr int kLauncherItemCount = 6;
+constexpr int kLauncherItemCount = 7;
 const char* kLauncherItems[kLauncherItemCount] = {
     "LOAD DATA",
     "MISSION SELECT",
+    "THE VOID",
     "BOSS RUSH",
     "SETTINGS",
     "START GAME",
@@ -718,6 +719,7 @@ const char* kLauncherItems[kLauncherItemCount] = {
 const char* kLauncherSubtext[kLauncherItemCount] = {
     "Load saved game data and resume your adventure.",
     "Select any mission from 1 to 23 and choose difficulty.",
+    "Combo practice in the Mission 8 arena with infinite HP and Devil Trigger.",
     "Consecutive boss trial against all bosses in DMC1.",
     "Style Switcher key bindings, HUD display, and controls.",
     "Start a new game from the prologue.",
@@ -810,11 +812,17 @@ void draw_launcher_menu(float width, float height) {
 
             if (i == 2) {
                 float rw = text_width(label, item_scale, item_track);
+                draw_text(verts, card_x + 34.0f * scale + rw, text_y + 2.0f * scale, "[COMBO ARENA]", item_scale * 0.78f, item_track * 0.8f, 1.0f, 0.82f, 0.32f, 1.0f);
+            } else if (i == 3) {
+                float rw = text_width(label, item_scale, item_track);
                 draw_text(verts, card_x + 34.0f * scale + rw, text_y + 2.0f * scale, "[COMING SOON]", item_scale * 0.78f, item_track * 0.8f, 1.0f, 0.78f, 0.25f, 1.0f);
             }
         } else {
             draw_text(verts, card_x + 38.0f * scale, text_y, kLauncherItems[i], item_scale, item_track, 0.72f, 0.68f, 0.65f, 1.0f);
             if (i == 2) {
+                float rw = text_width(kLauncherItems[i], item_scale, item_track);
+                draw_text(verts, card_x + 46.0f * scale + rw, text_y + 2.0f * scale, "[COMBO ARENA]", item_scale * 0.78f, item_track * 0.8f, 0.82f, 0.68f, 0.25f, 0.85f);
+            } else if (i == 3) {
                 float rw = text_width(kLauncherItems[i], item_scale, item_track);
                 draw_text(verts, card_x + 46.0f * scale + rw, text_y + 2.0f * scale, "[COMING SOON]", item_scale * 0.78f, item_track * 0.8f, 0.75f, 0.55f, 0.20f, 0.8f);
             }
@@ -1124,6 +1132,25 @@ void draw_style_hud(float width, float height) {
     draw_rect(verts, x, y, box_w, 2.0f * scale, r, g, b, 0.90f);
 
     draw_text_outlined(verts, x + pad_x, y + pad_y, label, text_sc, tracking, r, g, b, 1.0f);
+
+    if (mod_is_the_void()) {
+        const char* void_title = "THE VOID  //  COMBO ARENA";
+        const char* void_sub = "[F5 / SELECT] Reset Position  |  Infinite HP & DT";
+        float v_sc = scale * 0.38f;
+        float v_sub_sc = scale * 0.30f;
+        float v_track = 0.8f * scale;
+        float v_w1 = text_width(void_title, v_sc, v_track);
+        float v_w2 = text_width(void_sub, v_sub_sc, 0.4f * scale);
+        float v_box_w = (v_w1 > v_w2 ? v_w1 : v_w2) + pad_x * 2.0f;
+        float v_box_h = 36.0f * scale + pad_y * 2.0f;
+        float v_y = y - v_box_h - 10.0f * scale;
+
+        draw_rect(verts, x, v_y, v_box_w, v_box_h, 0.03f, 0.02f, 0.04f, 0.78f);
+        draw_rect(verts, x, v_y, v_box_w, 2.0f * scale, 0.85f, 0.15f, 0.20f, 0.95f);
+        draw_text_outlined(verts, x + pad_x, v_y + pad_y, void_title, v_sc, v_track, 1.0f, 0.88f, 0.40f, 1.0f);
+        draw_text(verts, x + pad_x, v_y + pad_y + 18.0f * scale, void_sub, v_sub_sc, 0.4f * scale, 0.82f, 0.80f, 0.76f, 0.90f);
+    }
+
     submit(verts, width, height, 0.0f, g_font_view);
 }
 
@@ -1549,15 +1576,24 @@ void update_menu_input() {
                     g_screen = Screen::Missions;
                     g_menu_lock = 12;
                     break;
-                case 2: // BOSS RUSH
+                case 2: // THE VOID
+                    g_launcher_dismissed = true;
+                    mod_arm_the_void(kModeValues[g_mode]);
+                    g_screen = Screen::None;
+                    g_capture.store(false);
+                    g_probe_cooldown = 45;
+                    g_wait_release.store(true);
+                    mod_begin_mission();
+                    break;
+                case 3: // BOSS RUSH
                     g_screen = Screen::BossRush;
                     g_menu_lock = 10;
                     break;
-                case 3: // SETTINGS
+                case 4: // SETTINGS
                     g_screen = Screen::Settings;
                     g_menu_lock = 10;
                     break;
-                case 4: // START GAME
+                case 5: // START GAME
                     g_launcher_dismissed = true;
                     mod_arm_mission(1, kModeValues[g_mode]);
                     g_screen = Screen::None;
@@ -1565,7 +1601,7 @@ void update_menu_input() {
                     g_wait_release.store(true);
                     mod_begin_mission();
                     break;
-                case 5: // EXIT TO HD COLLECTION
+                case 6: // EXIT TO HD COLLECTION
                     ExitProcess(0);
                     break;
             }

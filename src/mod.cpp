@@ -55,6 +55,7 @@ int g_trigger_threshold = 30;
 
 std::atomic<int> g_pending_mission{-1};
 std::atomic<int> g_pending_mode{3};
+std::atomic<bool> g_is_the_void{false};
 std::atomic<bool> g_mission_staged{false};
 std::atomic<bool> g_start_requested{false};
 std::atomic<bool> g_hold_event{false};
@@ -262,9 +263,18 @@ void place_mission_spawn(int mission) {
     uint32_t stage = 0;
     uint32_t room = 0;
     float pos[4] = {};
-    std::memcpy(&stage, entry, sizeof(stage));
-    std::memcpy(&room, entry + 4, sizeof(room));
-    std::memcpy(pos, entry + 0x10, sizeof(pos));
+    if (g_is_the_void.load()) {
+        stage = 1;
+        room = 22;
+        pos[0] = 0.0f;
+        pos[1] = 10.0f;
+        pos[2] = -500.0f;
+        pos[3] = 0.0f;
+    } else {
+        std::memcpy(&stage, entry, sizeof(stage));
+        std::memcpy(&room, entry + 4, sizeof(room));
+        std::memcpy(pos, entry + 0x10, sizeof(pos));
+    }
     uint8_t* event = event_data();
     if (event) {
         write_u32(event + 0x270, stage);
@@ -306,8 +316,13 @@ bool spawn_matches(int mission) {
     uint32_t room = 0;
     uint32_t current_stage = 0;
     uint32_t current_room = 0;
-    std::memcpy(&stage, entry, sizeof(stage));
-    std::memcpy(&room, entry + 4, sizeof(room));
+    if (g_is_the_void.load()) {
+        stage = 1;
+        room = 22;
+    } else {
+        std::memcpy(&stage, entry, sizeof(stage));
+        std::memcpy(&room, entry + 4, sizeof(room));
+    }
     std::memcpy(&current_stage, event + 0x270, sizeof(current_stage));
     std::memcpy(&current_room, event + 0x274, sizeof(current_room));
     return current_stage == stage && current_room == room;
@@ -376,9 +391,18 @@ void write_mission_room(int mission) {
     uint32_t stage = 0;
     uint32_t room = 0;
     float pos[4] = {};
-    std::memcpy(&stage, entry, sizeof(stage));
-    std::memcpy(&room, entry + 4, sizeof(room));
-    std::memcpy(pos, entry + 0x10, sizeof(pos));
+    if (g_is_the_void.load()) {
+        stage = 1;
+        room = 22;
+        pos[0] = 0.0f;
+        pos[1] = 10.0f;
+        pos[2] = -500.0f;
+        pos[3] = 0.0f;
+    } else {
+        std::memcpy(&stage, entry, sizeof(stage));
+        std::memcpy(&room, entry + 4, sizeof(room));
+        std::memcpy(pos, entry + 0x10, sizeof(pos));
+    }
     uint8_t* event = event_data();
     if (event) {
         write_u32(event + 0x270, stage);
@@ -445,9 +469,18 @@ void stage_chosen_mission() {
     uint32_t stage = 0;
     uint32_t room = 0;
     float pos[4] = {};
-    std::memcpy(&stage, entry, sizeof(stage));
-    std::memcpy(&room, entry + 4, sizeof(room));
-    std::memcpy(pos, entry + 0x10, sizeof(pos));
+    if (g_is_the_void.load()) {
+        stage = 1;
+        room = 22;
+        pos[0] = 0.0f;
+        pos[1] = 10.0f;
+        pos[2] = -500.0f;
+        pos[3] = 0.0f;
+    } else {
+        std::memcpy(&stage, entry, sizeof(stage));
+        std::memcpy(&room, entry + 4, sizeof(room));
+        std::memcpy(pos, entry + 0x10, sizeof(pos));
+    }
     auto src_slot = reinterpret_cast<uint8_t**>(g_base + kRoomSrcPtrRva);
     uint8_t* src = src_slot ? *src_slot : nullptr;
     if (!src) {
@@ -585,6 +618,66 @@ void keep_chosen_mission() {
     }
 }
 
+void void_update_frame() {
+    if (!g_is_the_void.load() || !in_game()) {
+        return;
+    }
+    uint8_t* player = actor();
+    if (player) {
+        // 1. Maintain full HP for Dante (God Mode in The Void)
+        uint16_t max_hp = *reinterpret_cast<uint16_t*>(player + 0x1BD0);
+        if (max_hp == 0 || max_hp > 30000) {
+            max_hp = 3000;
+        }
+        *reinterpret_cast<uint16_t*>(player + 0x1BCE) = max_hp;
+        *reinterpret_cast<uint16_t*>(player + 0x1BC8) = max_hp;
+        *reinterpret_cast<uint16_t*>(player + 0x1BD2) = max_hp;
+        *reinterpret_cast<uint16_t*>(player + 0x1BD4) = max_hp;
+
+        // 2. Maintain full Devil Trigger (10 runes & max gauge)
+        *reinterpret_cast<uint16_t*>(player + 0x1BD8) = 10;
+        *reinterpret_cast<uint32_t*>(player + 0x1C00) = 10000;
+
+        // 3. F5 key shortcut to reset position to arena center
+        bool key_f5 = (GetAsyncKeyState(VK_F5) & 0x8000) != 0;
+        static bool s_prev_f5 = false;
+        if (key_f5 && !s_prev_f5) {
+            float rx = 0.0f;
+            float ry = 10.0f;
+            float rz = -500.0f;
+            float rfacing = 0.0f;
+            for (uintptr_t offset : {uintptr_t{0x1AC0}, uintptr_t{0x1E0}, uintptr_t{0x170}}) {
+                write_f32(player + offset, rx);
+                write_f32(player + offset + 4, ry);
+                write_f32(player + offset + 8, rz);
+            }
+            write_f32(player + 0x124, rfacing);
+            log_line("the void: Dante reset to arena center via F5");
+        }
+        s_prev_f5 = key_f5;
+    }
+
+    // 4. Maintain target / enemy HP so practice session never ends
+    uintptr_t base = g_base;
+    if (base) {
+        int32_t count = *reinterpret_cast<int32_t*>(base + 0x4CB6BA0);
+        auto** enemy_list = reinterpret_cast<uint8_t**>(base + 0x4CB6BB0);
+        if (count > 0 && count <= 64 && enemy_list) {
+            for (int i = 0; i < count; ++i) {
+                uint8_t* e = enemy_list[i];
+                if (!e || e == player) continue;
+                auto ptr_val = reinterpret_cast<uintptr_t>(e);
+                if (ptr_val < 0x10000 || ptr_val > 0x7FFFFFFFFFFFull || (ptr_val & 7) != 0) continue;
+
+                uint16_t* ehp = reinterpret_cast<uint16_t*>(e + 0x1BC8);
+                if (*ehp > 0 && *ehp < 2000) {
+                    *ehp = 10000;
+                }
+            }
+        }
+    }
+}
+
 extern "C" void apply_weapon_requests() {
     keep_chosen_mission();
     if (!in_game()) {
@@ -592,6 +685,7 @@ extern "C" void apply_weapon_requests() {
         g_want_ranged.store(false);
         return;
     }
+    void_update_frame();
     style_update();
     if (style_in_action()) {
         g_want_ranged.store(false);
@@ -692,6 +786,7 @@ void install_hooks() {
 }  // namespace
 
 void mod_arm_mission(int mission, int mode) {
+    g_is_the_void.store(false);
     g_mission_staged.store(false);
     g_stage_tick = 0;
     g_in_game_frames = 0;
@@ -703,6 +798,25 @@ void mod_arm_mission(int mission, int mode) {
     auto slot = reinterpret_cast<uint8_t**>(g_base + kMenuConfigPtrRva);
     uint8_t* config = slot ? *slot : nullptr;
     log_line("armed mission %d mode %d menu %u", mission, mode, config ? config[0] : 0);
+}
+
+void mod_arm_the_void(int mode) {
+    g_is_the_void.store(true);
+    g_mission_staged.store(false);
+    g_stage_tick = 0;
+    g_in_game_frames = 0;
+    g_logged_spawn = false;
+    g_pending_mode.store(mode);
+    g_pending_mission.store(8); // Mission 8: Courtyard / Phantom arena
+    uint8_t previous = 0;
+    write_mission_choice(8, mode, previous);
+    auto slot = reinterpret_cast<uint8_t**>(g_base + kMenuConfigPtrRva);
+    uint8_t* config = slot ? *slot : nullptr;
+    log_line("armed the void (mission 8 arena) mode %d menu %u", mode, config ? config[0] : 0);
+}
+
+bool mod_is_the_void() {
+    return g_is_the_void.load();
 }
 
 void mod_begin_mission() {
@@ -718,10 +832,11 @@ void mod_begin_mission() {
     g_hold_title.store(false);
     g_start_requested.store(true);
     g_menu_request.store(1);
-    log_line("mission start %d mode %d queued", mission, mode);
+    log_line("mission start %d mode %d queued (is_void=%d)", mission, mode, g_is_the_void.load() ? 1 : 0);
 }
 
 void mod_clear_mission() {
+    g_is_the_void.store(false);
     g_pending_mission.store(-1);
     log_line("mission override cleared");
 }
@@ -805,6 +920,25 @@ void mod_on_get_state(DWORD user, XInputState* state) {
     overlay_on_pad(state);
     if (!state || !g_hooks_ready) {
         return;
+    }
+    if (state && g_is_the_void.load() && in_game()) {
+        if (state->gamepad.buttons & 0x0020) { // Back / View / Select
+            state->gamepad.buttons &= ~0x0020;
+            uint8_t* player = actor();
+            if (player) {
+                float rx = 0.0f;
+                float ry = 10.0f;
+                float rz = -500.0f;
+                float rfacing = 0.0f;
+                for (uintptr_t offset : {uintptr_t{0x1AC0}, uintptr_t{0x1E0}, uintptr_t{0x170}}) {
+                    write_f32(player + offset, rx);
+                    write_f32(player + offset + 4, ry);
+                    write_f32(player + offset + 8, rz);
+                }
+                write_f32(player + 0x124, rfacing);
+                log_line("the void: Dante reset to arena center (gamepad back)");
+            }
+        }
     }
     style_on_pad(state);
     watch_trigger(state->gamepad.leftTrigger, g_left, g_want_melee);
