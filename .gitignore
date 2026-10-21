@@ -7,3 +7,4 @@ build/
 *.sav
 payload.h
 .vs/
+__pycache__/

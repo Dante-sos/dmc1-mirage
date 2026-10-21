@@ -7,14 +7,21 @@
 
 namespace {
 
-constexpr uintptr_t kMissionTableRva = 0x560170;
-constexpr uintptr_t kEnemyCountRva   = 0x4CB6BA0;
-constexpr uintptr_t kEnemyListRva    = 0x4CB6BB0;
-constexpr uintptr_t kBriefingJumpRva = 0x24FE5E;
+constexpr uintptr_t kMissionTableRva      = 0x560170;
+constexpr uintptr_t kEnemyCountRva        = 0x4CB6BA0;
+constexpr uintptr_t kEnemyListRva         = 0x4CB6BB0;
+constexpr uintptr_t kBriefingJumpRva      = 0x24FE5E;
+constexpr uintptr_t kRoomTableEntry22Rva  = 0x5165F8;
+constexpr uintptr_t kRoomTableEntry24Rva  = 0x516628;
+constexpr uintptr_t kStage1Room22FileRva  = 0x5A45BC;
 
-// Stage 1 room 33 (0x21) is r121.fsd (Rooftop / Phantom Boss Arena, File 240)
+// Mission 8 rooftop arena configuration:
+// DMC1 checks at 0x140255D12: "cmp dword ptr [rcx + 0x274], 0x16" (room == 22) to recognize Mission 8.
+// By keeping room = 22 and remapping Room 22 to File 240 (r121.fsd) in Table 2
+// and Entry 24 (r121.fsd Rooftop Arena / Phantom boss descriptor) in Table 1,
+// the engine natively runs Mission 8, loads the rooftop arena, spawns Phantom, and never falls back to Mission 1.
 constexpr uint32_t kVoidStage = 1;
-constexpr uint32_t kVoidRoom  = 33;
+constexpr uint32_t kVoidRoom  = 22;
 constexpr float kVoidSpawnPos[4] = {0.0f, 10.0f, 0.0f, 3.01f};
 
 // Native Mission 8 starting configuration in r11d.fsd (Room 22 / 0x16)
@@ -27,6 +34,11 @@ constexpr float kOrigSpawnPos[4] = {5000.0f, 150.0f, -2750.0f, -1.72f};
 // Patched:  E9 B8 00 00 00 90  (jmp 0x14024ff1b; nop)
 const uint8_t kOrigBriefingJump[6]    = {0x0F, 0x84, 0xB7, 0x00, 0x00, 0x00};
 const uint8_t kPatchedBriefingJump[6] = {0xE9, 0xB8, 0x00, 0x00, 0x00, 0x90};
+
+uint8_t  g_saved_room_entry_22[24] = {};
+bool     g_room_entry_saved = false;
+uint16_t g_saved_stage1_file_22 = 0;
+bool     g_stage1_file_saved = false;
 
 std::atomic<bool> g_void_active{false};
 std::atomic<int>  g_void_mode{3};
@@ -55,6 +67,56 @@ void void_reset_player() {
     mod_log("the_void: Dante position reset to arena center (0, 10, 0)");
 }
 
+void void_patch_room_tables(bool enable) {
+    uintptr_t base = mod_base();
+    if (!base) return;
+
+    // 1. Table 1: Room Descriptor Table (RVA 0x5163E8)
+    // Entry 22 at base + 0x5165F8 (24 bytes) - originally r11d.fsd
+    // Entry 24 at base + 0x516628 (24 bytes) - r121.fsd rooftop arena & Phantom boss descriptor
+    auto* entry22 = reinterpret_cast<uint8_t*>(base + kRoomTableEntry22Rva);
+    const auto* entry24 = reinterpret_cast<const uint8_t*>(base + kRoomTableEntry24Rva);
+    if (entry22 && entry24) {
+        DWORD old_prot = 0;
+        if (VirtualProtect(entry22, 24, PAGE_EXECUTE_READWRITE, &old_prot)) {
+            if (enable) {
+                if (!g_room_entry_saved) {
+                    std::memcpy(g_saved_room_entry_22, entry22, 24);
+                    g_room_entry_saved = true;
+                }
+                std::memcpy(entry22, entry24, 24);
+                mod_log("the_void: patched Room Table Entry 22 with Entry 24 (r121.fsd rooftop arena descriptor)");
+            } else if (g_room_entry_saved) {
+                std::memcpy(entry22, g_saved_room_entry_22, 24);
+                mod_log("the_void: restored Room Table Entry 22");
+            }
+            VirtualProtect(entry22, 24, old_prot, &old_prot);
+        }
+    }
+
+    // 2. Table 2: Stage 1 File Index Table (RVA 0x5A4590)
+    // Index 22 at base + 0x5A45BC (uint16_t) - originally 233 (r116.fsd)
+    // Needs to be 240 (r121.fsd) so the collision & geometry load properly
+    auto* file_idx22 = reinterpret_cast<uint16_t*>(base + kStage1Room22FileRva);
+    if (file_idx22) {
+        DWORD old_prot = 0;
+        if (VirtualProtect(file_idx22, sizeof(uint16_t), PAGE_EXECUTE_READWRITE, &old_prot)) {
+            if (enable) {
+                if (!g_stage1_file_saved) {
+                    g_saved_stage1_file_22 = *file_idx22;
+                    g_stage1_file_saved = true;
+                }
+                *file_idx22 = 240;
+                mod_log("the_void: patched Stage 1 Room 22 file index to 240 (r121.fsd)");
+            } else if (g_stage1_file_saved) {
+                *file_idx22 = g_saved_stage1_file_22;
+                mod_log("the_void: restored Stage 1 Room 22 file index to %u", g_saved_stage1_file_22);
+            }
+            VirtualProtect(file_idx22, sizeof(uint16_t), old_prot, &old_prot);
+        }
+    }
+}
+
 }  // namespace
 
 void void_init() {
@@ -69,7 +131,7 @@ void void_arm(int mode) {
     g_void_mode.store(mode);
     void_patch_mission_table(true);
     void_patch_briefing_skip(true);
-    mod_log("the_void: armed practice arena (mission 8, r121.fsd Room 33, mode %d)", mode);
+    mod_log("the_void: armed practice arena (mission 8, r121.fsd Rooftop Arena, mode %d)", mode);
 }
 
 void void_disarm() {
@@ -124,6 +186,8 @@ void void_patch_mission_table(bool enable) {
         }
         VirtualProtect(entry8, 0x20, old_prot, &old_prot);
     }
+
+    void_patch_room_tables(enable);
 }
 
 void void_patch_briefing_skip(bool enable) {
@@ -201,11 +265,7 @@ void void_update_frame() {
         }
         *reinterpret_cast<uint16_t*>(player + 0x1BCE) = max_hp;
 
-        // 2. Maintain full Devil Trigger (10 runes)
-        *reinterpret_cast<uint16_t*>(player + 0x1BD8) = 10;
-        *reinterpret_cast<uint16_t*>(player + 0x1BD6) = 10;
-
-        // 3. F5 key shortcut to reset position to arena center
+        // 2. F5 key shortcut to reset position to arena center
         bool key_f5 = (GetAsyncKeyState(VK_F5) & 0x8000) != 0;
         if (key_f5 && !g_prev_f5) {
             void_reset_player();
@@ -213,7 +273,7 @@ void void_update_frame() {
         g_prev_f5 = key_f5;
     }
 
-    // 4. Maintain target / enemy HP so practice session never ends
+    // 3. Maintain target / enemy HP so practice session never ends
     uintptr_t base = mod_base();
     if (base) {
         int32_t count = *reinterpret_cast<int32_t*>(base + kEnemyCountRva);
