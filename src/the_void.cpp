@@ -22,7 +22,7 @@ constexpr uintptr_t kStage1Room22FileRva  = 0x5A45BC;
 // the engine natively runs Mission 8, loads the Cathedral arena, spawns Phantom, and provides 100% solid floor collision (0x418E90).
 constexpr uint32_t kVoidStage = 1;
 constexpr uint32_t kVoidRoom  = 22;
-constexpr float kVoidSpawnPos[4] = {-200.0f, 0.0f, 7800.0f, 3.14f};
+constexpr float kVoidSpawnPos[4] = {2200.0f, 0.0f, 7800.0f, 3.14f};
 
 // Native Mission 8 starting configuration in r11d.fsd (Room 22 / 0x16)
 constexpr uint32_t kOrigStage = 1;
@@ -65,6 +65,16 @@ void void_reset_player() {
         write_f32(player + offset + 8, rz);
     }
     write_f32(player + 0x124, rfacing);
+
+    uintptr_t base = mod_base();
+    if (base) {
+        float* gspawn = reinterpret_cast<float*>(base + 0x27E82A0);
+        gspawn[0] = rx;
+        gspawn[1] = ry;
+        gspawn[2] = rz;
+        gspawn[3] = rfacing;
+    }
+
     mod_log("the_void: Dante position reset to arena floor (%.1f, %.1f, %.1f)", rx, ry, rz);
 }
 
