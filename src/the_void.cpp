@@ -17,7 +17,7 @@ constexpr uintptr_t kStage1Room22FileRva  = 0x5A45BC;
 
 // Colosseum Arena (r203.fsd) configuration:
 // DMC1 checks at 0x140255D12: "cmp dword ptr [rcx + 0x274], 0x16" (room == 22) to recognize Mission 8.
-// By keeping room = 22 and remapping Room 22 to File 237 (r203.fsd) in Table 2
+// By keeping room = 22 and remapping Room 22 to File 236 (r203.fsd) in Table 2
 // and Entry 28 (r203.fsd Colosseum Arena descriptor) in Table 1,
 // the engine natively runs Mission 8, loads the massive 300m Colosseum arena, spawns enemies, and provides 100% solid flat floor collision.
 constexpr uint32_t kVoidStage = 1;
@@ -107,7 +107,7 @@ void void_patch_room_tables(bool enable) {
 
     // 2. Table 2: Stage 1 File Index Table (RVA 0x5A4590)
     // Index 22 at base + 0x5A45BC (uint16_t)
-    // Needs to be 237 (r203.fsd) so the collision & geometry load properly
+    // Needs to be 236 (r203.fsd) so the collision & geometry load properly
     auto* file_idx22 = reinterpret_cast<uint16_t*>(base + kStage1Room22FileRva);
     if (file_idx22) {
         DWORD old_prot = 0;
@@ -117,8 +117,8 @@ void void_patch_room_tables(bool enable) {
                     g_saved_stage1_file_22 = *file_idx22;
                     g_stage1_file_saved = true;
                 }
-                *file_idx22 = 237;
-                mod_log("the_void: patched Stage 1 Room 22 file index to 237 (r203.fsd Colosseum Arena)");
+                *file_idx22 = 236;
+                mod_log("the_void: patched Stage 1 Room 22 file index to 236 (r203.fsd Colosseum Arena)");
             } else if (g_stage1_file_saved) {
                 *file_idx22 = g_saved_stage1_file_22;
                 mod_log("the_void: restored Stage 1 Room 22 file index to %u", g_saved_stage1_file_22);
