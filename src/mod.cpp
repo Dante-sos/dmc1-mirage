@@ -420,7 +420,20 @@ extern "C" void apply_pending_at_menu() {
         g_logged_title_loop = true;
         log_line("title loop active state %u", config[0]);
     }
-    if (!config || config[0] != 5) {
+    if (!config) {
+        return;
+    }
+    if (config[0] == 6 && g_is_the_void.load()) {
+        config[0x0D] = 0;
+        config[1] = 4;
+        auto src_slot = reinterpret_cast<uint8_t**>(g_base + kRoomSrcPtrRva);
+        uint8_t* src = src_slot ? *src_slot : nullptr;
+        if (src) {
+            src[0x64] |= 4;
+        }
+        return;
+    }
+    if (config[0] != 5) {
         return;
     }
     if (g_hold_title.load()) {
@@ -439,17 +452,21 @@ extern "C" void apply_pending_at_menu() {
         if (mission < 1) {
             return;
         }
-        // Same writes as the native New Game / difficulty confirm (0x3f9180..0x3f919c).
         config[0x10] = static_cast<uint8_t>(mission);
         config[0x0B] = static_cast<uint8_t>(mode);
+        config[0x0D] = 0;
         if (g_is_the_void.load()) {
-            config[1] = 0;
-            write_u32(config, 7);
-            config[0x0D] = 1;
-            log_line("title menu -> direct to the void (state 7)");
-        } else {
+            config[1] = 4;
             write_u32(config, 6);
-            config[0x0D] = 0;
+            auto src_slot = reinterpret_cast<uint8_t**>(g_base + kRoomSrcPtrRva);
+            uint8_t* src = src_slot ? *src_slot : nullptr;
+            if (src) {
+                src[0x64] |= 4;
+            }
+            log_line("title menu -> direct to the void (state 6 substate 4)");
+        } else {
+            config[1] = 0;
+            write_u32(config, 6);
             log_line("title menu -> new game mission %d mode %d", mission, mode);
         }
     } else if (request == 2) {
@@ -812,7 +829,38 @@ void install_hooks() {
 
 }  // namespace
 
+void patch_mission_table_for_void(bool enable) {
+    if (!g_base) return;
+    uint8_t* table = reinterpret_cast<uint8_t*>(g_base + kMissionTableRva);
+    if (!table) return;
+    uint8_t* entry8 = table + 8 * 0x20;
+    DWORD old_prot = 0;
+    if (VirtualProtect(entry8, 0x20, PAGE_EXECUTE_READWRITE, &old_prot)) {
+        if (enable) {
+            uint32_t stage = 1;
+            uint32_t room = 20; // r114.fsd: rooftop / Phantom courtyard arena
+            float pos[4] = {0.0f, 10.0f, 0.0f, 0.0f};
+            write_u32(entry8, stage);
+            write_u32(entry8 + 4, room);
+            std::memcpy(entry8 + 0x10, pos, sizeof(pos));
+            log_line("mission table entry 8 patched for the void: stage=%u room=%u", stage, room);
+        } else {
+            uint32_t stage = 1;
+            uint32_t room = 22; // original r116.fsd
+            float pos[4] = {5000.0f, 150.0f, -2750.0f, -1.7f};
+            write_u32(entry8, stage);
+            write_u32(entry8 + 4, room);
+            std::memcpy(entry8 + 0x10, pos, sizeof(pos));
+            log_line("mission table entry 8 restored to original: stage=%u room=%u", stage, room);
+        }
+        VirtualProtect(entry8, 0x20, old_prot, &old_prot);
+    }
+}
+
 void mod_arm_mission(int mission, int mode) {
+    if (g_is_the_void.load()) {
+        patch_mission_table_for_void(false);
+    }
     g_is_the_void.store(false);
     g_mission_staged.store(false);
     g_stage_tick = 0;
@@ -829,6 +877,7 @@ void mod_arm_mission(int mission, int mode) {
 
 void mod_arm_the_void(int mode) {
     g_is_the_void.store(true);
+    patch_mission_table_for_void(true);
     g_mission_staged.store(false);
     g_stage_tick = 0;
     g_in_game_frames = 0;
@@ -863,6 +912,9 @@ void mod_begin_mission() {
 }
 
 void mod_clear_mission() {
+    if (g_is_the_void.load()) {
+        patch_mission_table_for_void(false);
+    }
     g_is_the_void.store(false);
     g_pending_mission.store(-1);
     log_line("mission override cleared");
