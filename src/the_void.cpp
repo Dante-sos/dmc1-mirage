@@ -22,7 +22,7 @@ constexpr uintptr_t kStage1Room22FileRva  = 0x5A45BC;
 // the engine natively runs Mission 8, loads the Cathedral arena, spawns Phantom, and provides 100% solid floor collision (0x418E90).
 constexpr uint32_t kVoidStage = 1;
 constexpr uint32_t kVoidRoom  = 22;
-constexpr float kVoidSpawnPos[4] = {2200.0f, 0.0f, 7800.0f, 3.14f};
+constexpr float kVoidSpawnPos[4] = {2200.0f, 0.0f, 250.0f, 0.0f};
 
 // Native Mission 8 starting configuration in r11d.fsd (Room 22 / 0x16)
 constexpr uint32_t kOrigStage = 1;
