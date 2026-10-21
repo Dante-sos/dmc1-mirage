@@ -15,18 +15,9 @@ constexpr uintptr_t kRoomTableEntry22Rva  = 0x5165F8;
 constexpr uintptr_t kRoomTableEntry31Rva  = 0x5166D0;
 constexpr uintptr_t kStage1Room22FileRva  = 0x5A45BC;
 
-// Rusty Key Drainage Chamber (r206.fsd) configuration:
-// This is the EXACT arena from the YouTube video at 1:00:
-// - Two heavy portcullis gates on the left wall
-// - Iron door with rivets in the corner
-// - Three circular sewer drainage pipes on the right wall
-// - Wide stone arena floor framed by Camera 35 looking down at (0, 0, 0)
-// By keeping room = 22 and remapping Room 22 to File 239 (r206.fsd) in Table 2
-// and Entry 31 (r206.fsd Rusty Key Chamber descriptor) in Table 1,
-// the engine natively runs Mission 8, loads the exact arena from the video, spawns practice enemies, and provides 100% solid flat floor collision.
 constexpr uint32_t kVoidStage = 1;
 constexpr uint32_t kVoidRoom  = 22;
-constexpr float kVoidSpawnPos[4] = {7000.0f, 0.0f, -1500.0f, 0.0f};
+constexpr float kVoidSpawnPos[4] = {7200.0f, 0.0f, 0.0f, 1.57f};
 
 // Native Mission 8 starting configuration in r11d.fsd (Room 22 / 0x16)
 constexpr uint32_t kOrigStage = 1;
