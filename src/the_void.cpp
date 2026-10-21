@@ -10,16 +10,23 @@ namespace {
 constexpr uintptr_t kMissionTableRva = 0x560170;
 constexpr uintptr_t kEnemyCountRva   = 0x4CB6BA0;
 constexpr uintptr_t kEnemyListRva    = 0x4CB6BB0;
+constexpr uintptr_t kBriefingJumpRva = 0x24FE5E;
 
-// Room table entry 16 (0x10) is r114.fsd (Rooftop / Phantom Courtyard arena)
+// Room table entry 22 (0x16) is r11d.fsd (Rooftop / Phantom Courtyard arena)
 constexpr uint32_t kVoidStage = 1;
-constexpr uint32_t kVoidRoom  = 16;
+constexpr uint32_t kVoidRoom  = 22;
 constexpr float kVoidSpawnPos[4] = {0.0f, 10.0f, 0.0f, 0.0f};
 
 // Native Mission 8 starting configuration in r11d.fsd (Room 22 / 0x16)
 constexpr uint32_t kOrigStage = 1;
 constexpr uint32_t kOrigRoom  = 22;
 constexpr float kOrigSpawnPos[4] = {5000.0f, 150.0f, -2750.0f, -1.72f};
+
+// At RVA 0x24FE5E in dmc1.exe:
+// Original: 0F 84 B7 00 00 00  (je 0x14024ff1b)
+// Patched:  E9 B8 00 00 00 90  (jmp 0x14024ff1b; nop)
+const uint8_t kOrigBriefingJump[6]    = {0x0F, 0x84, 0xB7, 0x00, 0x00, 0x00};
+const uint8_t kPatchedBriefingJump[6] = {0xE9, 0xB8, 0x00, 0x00, 0x00, 0x90};
 
 std::atomic<bool> g_void_active{false};
 std::atomic<int>  g_void_mode{3};
@@ -61,12 +68,14 @@ void void_arm(int mode) {
     g_void_active.store(true);
     g_void_mode.store(mode);
     void_patch_mission_table(true);
-    mod_log("the_void: armed practice arena (mission 8, r114.fsd, mode %d)", mode);
+    void_patch_briefing_skip(true);
+    mod_log("the_void: armed practice arena (mission 8, r11d.fsd Room 22, mode %d)", mode);
 }
 
 void void_disarm() {
     if (g_void_active.load()) {
         void_patch_mission_table(false);
+        void_patch_briefing_skip(false);
     }
     g_void_active.store(false);
     mod_log("the_void: disarmed");
@@ -104,7 +113,7 @@ void void_patch_mission_table(bool enable) {
             std::memcpy(entry8, &stage, sizeof(stage));
             std::memcpy(entry8 + 4, &room, sizeof(room));
             std::memcpy(entry8 + 0x10, kVoidSpawnPos, sizeof(kVoidSpawnPos));
-            mod_log("the_void: mission table entry 8 patched: stage=%u room=%u (r114.fsd)", stage, room);
+            mod_log("the_void: mission table entry 8 patched: stage=%u room=%u (r11d.fsd)", stage, room);
         } else {
             uint32_t stage = kOrigStage;
             uint32_t room  = kOrigRoom;
@@ -114,6 +123,25 @@ void void_patch_mission_table(bool enable) {
             mod_log("the_void: mission table entry 8 restored: stage=%u room=%u", stage, room);
         }
         VirtualProtect(entry8, 0x20, old_prot, &old_prot);
+    }
+}
+
+void void_patch_briefing_skip(bool enable) {
+    uintptr_t base = mod_base();
+    if (!base) return;
+
+    uint8_t* site = reinterpret_cast<uint8_t*>(base + kBriefingJumpRva);
+    DWORD old_prot = 0;
+    if (VirtualProtect(site, sizeof(kOrigBriefingJump), PAGE_EXECUTE_READWRITE, &old_prot)) {
+        if (enable) {
+            std::memcpy(site, kPatchedBriefingJump, sizeof(kPatchedBriefingJump));
+            mod_log("the_void: patched briefing jump at %p to unconditional jmp (bypasses briefing/shop)", site);
+        } else {
+            std::memcpy(site, kOrigBriefingJump, sizeof(kOrigBriefingJump));
+            mod_log("the_void: restored briefing jump at %p to je", site);
+        }
+        VirtualProtect(site, sizeof(kOrigBriefingJump), old_prot, &old_prot);
+        FlushInstructionCache(GetCurrentProcess(), site, sizeof(kOrigBriefingJump));
     }
 }
 

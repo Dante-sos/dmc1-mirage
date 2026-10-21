@@ -331,7 +331,11 @@ void mark_mission_start(uint8_t* data) {
     }
     uint32_t flags = 0;
     std::memcpy(&flags, data + kEventOffset, sizeof(flags));
-    flags |= 0x800;
+    if (void_is_active()) {
+        flags &= ~0x800;
+    } else {
+        flags |= 0x800;
+    }
     std::memcpy(data + kEventOffset, &flags, sizeof(flags));
 }
 
@@ -503,6 +507,15 @@ extern "C" void apply_pending_at_event() {
     }
     if (!event) {
         return;
+    }
+    if (void_is_active()) {
+        uint8_t* s = session();
+        if (s) {
+            uint32_t flags = 0;
+            std::memcpy(&flags, s + kEventOffset, sizeof(flags));
+            flags &= ~0x800;
+            std::memcpy(s + kEventOffset, &flags, sizeof(flags));
+        }
     }
     if (g_start_requested.load() && (g_hold_event.load() || event[0] == 0)) {
         stage_chosen_mission();
