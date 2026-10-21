@@ -22,7 +22,7 @@ constexpr uintptr_t kStage1Room22FileRva  = 0x5A45BC;
 // the engine natively runs Mission 8, loads the Cathedral arena, spawns Phantom, and provides 100% solid floor collision (0x418E90).
 constexpr uint32_t kVoidStage = 1;
 constexpr uint32_t kVoidRoom  = 22;
-constexpr float kVoidSpawnPos[4] = {15294.0f, 0.0f, -399.0f, -2.39f};
+constexpr float kVoidSpawnPos[4] = {-294.0f, 0.0f, 8500.0f, 0.0f};
 
 // Native Mission 8 starting configuration in r11d.fsd (Room 22 / 0x16)
 constexpr uint32_t kOrigStage = 1;
@@ -42,6 +42,7 @@ bool     g_stage1_file_saved = false;
 
 std::atomic<bool> g_void_active{false};
 std::atomic<int>  g_void_mode{3};
+std::atomic<bool> g_needs_initial_spawn{false};
 bool g_prev_f5 = false;
 bool g_prev_back_button = false;
 
@@ -64,7 +65,7 @@ void void_reset_player() {
         write_f32(player + offset + 8, rz);
     }
     write_f32(player + 0x124, rfacing);
-    mod_log("the_void: Dante position reset to arena floor (15294, 0, -399)");
+    mod_log("the_void: Dante position reset to arena floor (%.1f, %.1f, %.1f)", rx, ry, rz);
 }
 
 void void_patch_room_tables(bool enable) {
@@ -122,6 +123,7 @@ void void_patch_room_tables(bool enable) {
 void void_init() {
     g_void_active.store(false);
     g_void_mode.store(3);
+    g_needs_initial_spawn.store(false);
     g_prev_f5 = false;
     g_prev_back_button = false;
 }
@@ -129,6 +131,7 @@ void void_init() {
 void void_arm(int mode) {
     g_void_active.store(true);
     g_void_mode.store(mode);
+    g_needs_initial_spawn.store(true);
     void_patch_mission_table(true);
     void_patch_briefing_skip(true);
     mod_log("the_void: armed practice arena (mission 8, r10c.fsd Cathedral Arena, mode %d)", mode);
@@ -140,6 +143,7 @@ void void_disarm() {
         void_patch_briefing_skip(false);
     }
     g_void_active.store(false);
+    g_needs_initial_spawn.store(false);
     mod_log("the_void: disarmed");
 }
 
@@ -257,6 +261,10 @@ void void_update_frame() {
 
     uint8_t* player = mod_actor();
     if (player) {
+        if (g_needs_initial_spawn.exchange(false)) {
+            void_reset_player();
+        }
+
         // 1. Maintain full HP for Dante (God Mode in The Void)
         // Strictly at 0x1BCE (current HP), never touching 0x1BC8 or 0x1C00
         uint16_t max_hp = *reinterpret_cast<uint16_t*>(player + 0x1BD0);
