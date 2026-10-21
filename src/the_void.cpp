@@ -12,10 +12,10 @@ constexpr uintptr_t kEnemyCountRva   = 0x4CB6BA0;
 constexpr uintptr_t kEnemyListRva    = 0x4CB6BB0;
 constexpr uintptr_t kBriefingJumpRva = 0x24FE5E;
 
-// Room table entry 22 (0x16) is r11d.fsd (Rooftop / Phantom Courtyard arena)
+// Room table entry 24 (0x18) is r121.fsd (Rooftop / Phantom Boss Arena)
 constexpr uint32_t kVoidStage = 1;
-constexpr uint32_t kVoidRoom  = 22;
-constexpr float kVoidSpawnPos[4] = {0.0f, 10.0f, 0.0f, 0.0f};
+constexpr uint32_t kVoidRoom  = 24;
+constexpr float kVoidSpawnPos[4] = {0.0f, 10.0f, 0.0f, 3.01f};
 
 // Native Mission 8 starting configuration in r11d.fsd (Room 22 / 0x16)
 constexpr uint32_t kOrigStage = 1;
@@ -69,7 +69,7 @@ void void_arm(int mode) {
     g_void_mode.store(mode);
     void_patch_mission_table(true);
     void_patch_briefing_skip(true);
-    mod_log("the_void: armed practice arena (mission 8, r11d.fsd Room 22, mode %d)", mode);
+    mod_log("the_void: armed practice arena (mission 8, r121.fsd Room 24, mode %d)", mode);
 }
 
 void void_disarm() {
@@ -113,7 +113,7 @@ void void_patch_mission_table(bool enable) {
             std::memcpy(entry8, &stage, sizeof(stage));
             std::memcpy(entry8 + 4, &room, sizeof(room));
             std::memcpy(entry8 + 0x10, kVoidSpawnPos, sizeof(kVoidSpawnPos));
-            mod_log("the_void: mission table entry 8 patched: stage=%u room=%u (r11d.fsd)", stage, room);
+            mod_log("the_void: mission table entry 8 patched: stage=%u room=%u (r121.fsd)", stage, room);
         } else {
             uint32_t stage = kOrigStage;
             uint32_t room  = kOrigRoom;
