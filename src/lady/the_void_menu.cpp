@@ -246,11 +246,13 @@ void void_menu_reset_dummy() {
     float pz = *reinterpret_cast<float*>(player + 0x1AC8);
     float pyaw = *reinterpret_cast<float*>(player + 0x124);
 
-    float forward_x = -std::sin(pyaw);
+    // DMC1 coordinate math: forward = (sin(yaw), cos(yaw)), right = (cos(yaw), -sin(yaw))
+    float forward_x = std::sin(pyaw);
     float forward_z = std::cos(pyaw);
     float right_x = std::cos(pyaw);
-    float right_z = std::sin(pyaw);
-    float dummy_yaw = pyaw + 3.14159f;
+    float right_z = -std::sin(pyaw);
+    float dummy_yaw = pyaw + 3.14159265f;
+    if (dummy_yaw > 3.14159265f) dummy_yaw -= 6.2831853f;
 
     int max_dummies = std::clamp(g_void_settings.dummy_count, 1, 3);
     const float x_offsets[3] = {0.0f, -140.0f, 140.0f};
@@ -274,12 +276,15 @@ void void_menu_reset_dummy() {
             float dummy_x = px + forward_x * 240.0f + right_x * off;
             float dummy_z = pz + forward_z * 240.0f + right_z * off;
 
-            // Only update World Pos (0x1AC0) and Physics Pos (0x1E0) - never touch 0x170!
-            for (uintptr_t offset : {uintptr_t{0x1AC0}, uintptr_t{0x1E0}}) {
+            // Write position to Home/Spawn (0x170), World (0x1AC0), and Physics (0x1E0)
+            // 0x170 is 16 bytes: X, Y, Z, W (W = 1.0f). NEVER touch 0x180 (matrix ptr)!
+            for (uintptr_t offset : {uintptr_t{0x170}, uintptr_t{0x1AC0}, uintptr_t{0x1E0}}) {
                 *reinterpret_cast<float*>(dummy + offset) = dummy_x;
                 *reinterpret_cast<float*>(dummy + offset + 4) = py;
                 *reinterpret_cast<float*>(dummy + offset + 8) = dummy_z;
             }
+            *reinterpret_cast<float*>(dummy + 0x17C) = 1.0f;
+            *reinterpret_cast<float*>(dummy + 0x1EC) = 1.0f;
             *reinterpret_cast<float*>(dummy + 0x124) = dummy_yaw;
 
             // Zero velocity on World and Physics - never touch 0x170+0x10 (which is 0x180 matrix ptr!)
@@ -299,26 +304,26 @@ void void_menu_reset_dummy() {
 
             placed++;
         } else {
-            // Keep extra dummy safely behind Dante on the arena floor (no matrix corruption)
-            float off = x_offsets[placed % 3];
-            float dummy_x = px - forward_x * 900.0f + right_x * off;
-            float dummy_z = pz - forward_z * 900.0f + right_z * off;
-
+            // Keep extra dummy safely dormant behind chamber wall (NEVER set HP to 0!)
+            *reinterpret_cast<uint16_t*>(dummy + 0x17A2) = 0;
             for (uintptr_t offset : {uintptr_t{0x1AC0}, uintptr_t{0x1E0}}) {
-                *reinterpret_cast<float*>(dummy + offset) = dummy_x;
-                *reinterpret_cast<float*>(dummy + offset + 4) = py;
-                *reinterpret_cast<float*>(dummy + offset + 8) = dummy_z;
+                *reinterpret_cast<float*>(dummy + offset) = 7927.5f;
+                *reinterpret_cast<float*>(dummy + offset + 4) = -120.5f;
+                *reinterpret_cast<float*>(dummy + offset + 8) = -5000.0f;
             }
             for (uintptr_t offset : {uintptr_t{0x1AC0 + 0x10}, uintptr_t{0x1E0 + 0x10}}) {
                 *reinterpret_cast<float*>(dummy + offset) = 0.0f;
                 *reinterpret_cast<float*>(dummy + offset + 4) = 0.0f;
                 *reinterpret_cast<float*>(dummy + offset + 8) = 0.0f;
             }
-            *reinterpret_cast<uint16_t*>(dummy + 0x1BCE) = 0;
-            *reinterpret_cast<uint16_t*>(dummy + 0x17A2) = 0;
             placed++;
         }
     }
+
+    void_reset_style_rank();
+    g_void_settings.combo_hits = 0;
+    g_void_settings.current_combo_damage = 0.0f;
+    g_void_settings.dps = 0.0f;
 
     mod_log("the_void_menu: reset %d dummy(s) in front of Dante (total_count=%d)", placed, count);
 }
@@ -352,6 +357,7 @@ void void_menu_kill_dummy() {
             *reinterpret_cast<float*>(e + offset + 8) = 0.0f;
         }
     }
+    void_reset_style_rank();
     mod_log("the_void_menu: dummy despawned / killed");
 }
 

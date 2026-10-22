@@ -19,6 +19,12 @@ constexpr uintptr_t kStage1Room22FileRva  = 0x5A45BC;
 constexpr uintptr_t kBladeMissionCheckRva = 0x36E4DE;
 constexpr uintptr_t kWaveSpawnFnRva       = 0x247020;
 constexpr uintptr_t kBladeWaveDescRva     = 0x58ED00;
+constexpr uintptr_t kBladeWaveDesc2Rva    = 0x58ED10;
+constexpr uintptr_t kBladeWaveEntries1Rva = 0x58EF20;
+constexpr uintptr_t kBladeWaveEntries2Rva = 0x58E460;
+constexpr uintptr_t kStylePosTableRva     = 0x5D7540;
+constexpr uintptr_t kStyleMeterPosTableRva= 0x5D7640;
+constexpr uintptr_t kHudStatePtrRva       = 0x60AD10;
 
 constexpr uint32_t kVoidStage = 1;
 constexpr uint32_t kVoidRoom  = 22;
@@ -45,6 +51,20 @@ uint8_t  g_saved_room_entry_22[24] = {};
 bool     g_room_entry_saved = false;
 uint16_t g_saved_stage1_file_22 = 0;
 bool     g_stage1_file_saved = false;
+
+uint8_t  g_saved_wave_entries1[144] = {};
+bool     g_wave_entries1_saved = false;
+uint8_t  g_saved_wave_entries2[144] = {};
+bool     g_wave_entries2_saved = false;
+uint64_t g_saved_wave_count1 = 0;
+bool     g_wave_count1_saved = false;
+uint64_t g_saved_wave_count2 = 0;
+bool     g_wave_count2_saved = false;
+
+float    g_saved_style_rank_pos[4] = {};
+bool     g_style_rank_saved = false;
+float    g_saved_style_meter_pos[4] = {};
+bool     g_style_meter_saved = false;
 
 std::atomic<bool> g_void_active{false};
 std::atomic<int>  g_void_mode{3};
@@ -102,6 +122,7 @@ void void_reset_player() {
         }
     }
 
+    void_reset_style_rank();
     mod_log("the_void: Dante position reset to arena floor (%.1f, %.1f, %.1f)", rx, ry, rz);
 }
 
@@ -179,6 +200,165 @@ void void_patch_room_tables(bool enable) {
     }
 }
 
+void void_reset_style_rank() {
+    uintptr_t base = mod_base();
+    if (!base) return;
+
+    auto* hud_ptr = reinterpret_cast<uint8_t**>(base + kHudStatePtrRva);
+    if (hud_ptr && *hud_ptr) {
+        uint8_t* hud = *hud_ptr;
+        auto ptr_val = reinterpret_cast<uintptr_t>(hud);
+        if (ptr_val >= 0x10000 && ptr_val <= 0x7FFFFFFFFFFFull && (ptr_val & 7) == 0) {
+            hud[0xAC68] = 0; // hide style rank
+            hud[0xAC80] = 0; // reset rank level to 0
+            *reinterpret_cast<float*>(hud + 0xAA00) = 0.0f; // reset combo meter
+        }
+    }
+}
+
+void void_patch_style_placement(bool enable) {
+    uintptr_t base = mod_base();
+    if (!base) return;
+
+    auto* rank_pos = reinterpret_cast<float*>(base + kStylePosTableRva);
+    auto* meter_pos = reinterpret_cast<float*>(base + kStyleMeterPosTableRva);
+    if (!rank_pos || !meter_pos) return;
+
+    DWORD old_prot_rank = 0;
+    DWORD old_prot_meter = 0;
+    if (VirtualProtect(rank_pos, 16, PAGE_EXECUTE_READWRITE, &old_prot_rank) &&
+        VirtualProtect(meter_pos, 16, PAGE_EXECUTE_READWRITE, &old_prot_meter)) {
+        if (enable) {
+            if (!g_style_rank_saved) {
+                std::memcpy(g_saved_style_rank_pos, rank_pos, 16);
+                g_style_rank_saved = true;
+            }
+            if (!g_style_meter_saved) {
+                std::memcpy(g_saved_style_meter_pos, meter_pos, 16);
+                g_style_meter_saved = true;
+            }
+
+            // In widescreen, shift style rank HUD from 446.0f to 560.0f (clean top-right corner placement)
+            // and meter from 450.0f to 564.0f
+            rank_pos[0] = 560.0f;
+            meter_pos[0] = 564.0f;
+            mod_log("the_void: patched style rank HUD placement: rank_x=%.1f, meter_x=%.1f", rank_pos[0], meter_pos[0]);
+        } else {
+            if (g_style_rank_saved) {
+                std::memcpy(rank_pos, g_saved_style_rank_pos, 16);
+            }
+            if (g_style_meter_saved) {
+                std::memcpy(meter_pos, g_saved_style_meter_pos, 16);
+            }
+            mod_log("the_void: restored style rank HUD placement");
+        }
+        VirtualProtect(rank_pos, 16, old_prot_rank, &old_prot_rank);
+        VirtualProtect(meter_pos, 16, old_prot_meter, &old_prot_meter);
+    }
+}
+
+void void_patch_wave_descriptors(bool enable) {
+    uintptr_t base = mod_base();
+    if (!base) return;
+
+    // Chamber floor spawn positions in front of Dante (r206.fsd Drainage Chamber):
+    // Dante is at (7927.5f, -120.5f, -6064.5f, yaw=1.05f)
+    // 240 units in front facing Dante (yaw = -2.09f):
+    // Entry 0 (center): (8135.7f, -120.5f, -5945.1f, 1.0f)
+    // Entry 1 (left):   (8066.0f, -120.5f, -5823.7f, 1.0f)
+    // Entry 2 (right):  (8205.4f, -120.5f, -6066.5f, 1.0f)
+    const float new_coords[3][4] = {
+        {8135.7f, -120.5f, -5945.1f, 1.0f},
+        {8066.0f, -120.5f, -5823.7f, 1.0f},
+        {8205.4f, -120.5f, -6066.5f, 1.0f}
+    };
+    const float new_yaw = -2.09f;
+
+    // 1. Wave 1 entries at base + kBladeWaveEntries1Rva (0x58EF20)
+    auto* entries1 = reinterpret_cast<uint8_t*>(base + kBladeWaveEntries1Rva);
+    if (entries1) {
+        DWORD old_prot = 0;
+        if (VirtualProtect(entries1, 144, PAGE_EXECUTE_READWRITE, &old_prot)) {
+            if (enable) {
+                if (!g_wave_entries1_saved) {
+                    std::memcpy(g_saved_wave_entries1, entries1, 144);
+                    g_wave_entries1_saved = true;
+                }
+                for (int i = 0; i < 3; ++i) {
+                    uint8_t* e = entries1 + i * 48;
+                    write_f32(e + 16, new_yaw);
+                    write_f32(e + 32, new_coords[i][0]);
+                    write_f32(e + 36, new_coords[i][1]);
+                    write_f32(e + 40, new_coords[i][2]);
+                    write_f32(e + 44, new_coords[i][3]);
+                }
+                mod_log("the_void: patched Blade Wave 1 entries (0x58EF20) to chamber floor (Y=-120.5)");
+            } else if (g_wave_entries1_saved) {
+                std::memcpy(entries1, g_saved_wave_entries1, 144);
+                mod_log("the_void: restored Blade Wave 1 entries");
+            }
+            VirtualProtect(entries1, 144, old_prot, &old_prot);
+        }
+    }
+
+    // 2. Wave 2 entries at base + kBladeWaveEntries2Rva (0x58E460)
+    auto* entries2 = reinterpret_cast<uint8_t*>(base + kBladeWaveEntries2Rva);
+    if (entries2) {
+        DWORD old_prot = 0;
+        if (VirtualProtect(entries2, 144, PAGE_EXECUTE_READWRITE, &old_prot)) {
+            if (enable) {
+                if (!g_wave_entries2_saved) {
+                    std::memcpy(g_saved_wave_entries2, entries2, 144);
+                    g_wave_entries2_saved = true;
+                }
+                for (int i = 0; i < 3; ++i) {
+                    uint8_t* e = entries2 + i * 48;
+                    write_f32(e + 16, new_yaw);
+                    write_f32(e + 32, new_coords[i][0]);
+                    write_f32(e + 36, new_coords[i][1]);
+                    write_f32(e + 40, new_coords[i][2]);
+                    write_f32(e + 44, new_coords[i][3]);
+                }
+                mod_log("the_void: patched Blade Wave 2 entries (0x58E460) to chamber floor (Y=-120.5)");
+            } else if (g_wave_entries2_saved) {
+                std::memcpy(entries2, g_saved_wave_entries2, 144);
+                mod_log("the_void: restored Blade Wave 2 entries");
+            }
+            VirtualProtect(entries2, 144, old_prot, &old_prot);
+        }
+    }
+
+    // 3. Patch wave descriptor counts at base + 0x58ED00 and base + 0x58ED10
+    auto* desc1 = reinterpret_cast<uint64_t*>(base + kBladeWaveDescRva);
+    auto* desc2 = reinterpret_cast<uint64_t*>(base + kBladeWaveDesc2Rva);
+    if (desc1 && desc2) {
+        DWORD old_prot1 = 0;
+        DWORD old_prot2 = 0;
+        if (VirtualProtect(desc1, sizeof(uint64_t), PAGE_EXECUTE_READWRITE, &old_prot1) &&
+            VirtualProtect(desc2, sizeof(uint64_t), PAGE_EXECUTE_READWRITE, &old_prot2)) {
+            if (enable) {
+                if (!g_wave_count1_saved) {
+                    g_saved_wave_count1 = *desc1;
+                    g_wave_count1_saved = true;
+                }
+                if (!g_wave_count2_saved) {
+                    g_saved_wave_count2 = *desc2;
+                    g_wave_count2_saved = true;
+                }
+                uint64_t cnt = static_cast<uint64_t>(std::clamp(g_void_settings.dummy_count, 1, 3));
+                *desc1 = cnt;
+                *desc2 = cnt;
+                mod_log("the_void: patched wave counts to %llu", cnt);
+            } else {
+                if (g_wave_count1_saved) *desc1 = g_saved_wave_count1;
+                if (g_wave_count2_saved) *desc2 = g_saved_wave_count2;
+            }
+            VirtualProtect(desc1, sizeof(uint64_t), old_prot1, &old_prot1);
+            VirtualProtect(desc2, sizeof(uint64_t), old_prot2, &old_prot2);
+        }
+    }
+}
+
 void void_init() {
     g_void_active.store(false);
     g_void_mode.store(3);
@@ -198,6 +378,9 @@ void void_arm(int mode) {
     void_patch_mission_table(true);
     void_patch_briefing_skip(true);
     void_patch_spawn_check(true);
+    void_patch_wave_descriptors(true);
+    void_patch_style_placement(true);
+    void_reset_style_rank();
     mod_log("the_void: armed practice arena (mission 8, r206.fsd Rusty Key Drainage Chamber, mode %d)", mode);
 }
 
@@ -206,6 +389,8 @@ void void_disarm() {
         void_patch_mission_table(false);
         void_patch_briefing_skip(false);
         void_patch_spawn_check(false);
+        void_patch_wave_descriptors(false);
+        void_patch_style_placement(false);
     }
     g_void_active.store(false);
     g_initial_spawn_counter.store(0);
@@ -440,9 +625,19 @@ void void_update_frame() {
                 }
 
                 if (i >= max_dummies) {
-                    // Suppress extra dummy beyond selected count
-                    *reinterpret_cast<uint16_t*>(e + 0x1BCE) = 0;
+                    // Park extra dummy safely dormant behind the chamber wall
+                    // NEVER set HP (0x1BCE) to 0, which would award Dante free combat style points!
                     *reinterpret_cast<uint16_t*>(e + 0x17A2) = 0;
+                    for (uintptr_t offset : {uintptr_t{0x1AC0}, uintptr_t{0x1E0}}) {
+                        write_f32(e + offset, 7927.5f);
+                        write_f32(e + offset + 4, -120.5f);
+                        write_f32(e + offset + 8, -5000.0f);
+                    }
+                    for (uintptr_t offset : {uintptr_t{0x1AC0 + 0x10}, uintptr_t{0x1E0 + 0x10}}) {
+                        write_f32(e + offset, 0.0f);
+                        write_f32(e + offset + 4, 0.0f);
+                        write_f32(e + offset + 8, 0.0f);
+                    }
                     continue;
                 }
 
