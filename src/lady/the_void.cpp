@@ -17,7 +17,7 @@ constexpr uintptr_t kStage1Room22FileRva  = 0x5A45BC;
 
 constexpr uint32_t kVoidStage = 1;
 constexpr uint32_t kVoidRoom  = 22;
-constexpr float kVoidSpawnPos[4] = {7900.0f, 0.0f, -450.0f, -1.57f};
+constexpr float kVoidSpawnPos[4] = {7927.5f, -120.5f, -6064.5f, 1.05f};
 
 // Native Mission 8 starting configuration in r11d.fsd (Room 22 / 0x16)
 constexpr uint32_t kOrigStage = 1;
