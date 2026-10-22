@@ -910,3 +910,11 @@ void mod_on_get_state(DWORD user, XInputState* state) {
     watch_trigger(state->gamepad.leftTrigger, g_left, g_want_melee);
     watch_trigger(state->gamepad.rightTrigger, g_right, g_want_ranged);
 }
+
+void mod_switch_melee() {
+    g_want_melee.store(true);
+}
+
+void mod_switch_ranged() {
+    g_want_ranged.store(true);
+}
