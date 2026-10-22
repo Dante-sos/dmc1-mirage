@@ -17,7 +17,7 @@ constexpr uintptr_t kStage1Room22FileRva  = 0x5A45BC;
 
 constexpr uint32_t kVoidStage = 1;
 constexpr uint32_t kVoidRoom  = 22;
-constexpr float kVoidSpawnPos[4] = {8341.0f, 0.0f, -1418.0f, -2.10f};
+constexpr float kVoidSpawnPos[4] = {8000.0f, 0.0f, -950.0f, 0.0f};
 
 // Native Mission 8 starting configuration in r11d.fsd (Room 22 / 0x16)
 constexpr uint32_t kOrigStage = 1;
@@ -290,11 +290,11 @@ void void_update_frame() {
             void_reset_player();
         }
 
-        // Hard guarantee: if Dante is ever positioned in the doorway alcove (near X=7659, Z=-1575),
-        // immediately pop him out onto the arena floor!
+        // Hard guarantee: if Dante is ever positioned in the doorway alcove (behind the entrance barrier),
+        // immediately pop him out onto the open arena floor!
         float cur_x = *reinterpret_cast<float*>(player + 0x1AC0);
         float cur_z = *reinterpret_cast<float*>(player + 0x1AC8);
-        if (cur_x < 7800.0f && cur_z < -1450.0f) {
+        if (cur_z < -1300.0f && cur_x > 7000.0f) {
             void_reset_player();
         }
 
