@@ -447,6 +447,8 @@ void void_update_frame() {
                         *reinterpret_cast<float*>(e + 0x1AC0 + 0x18) = 0.0f; // vel Z
                         *reinterpret_cast<float*>(e + 0x1E0 + 0x10) = 0.0f;
                         *reinterpret_cast<float*>(e + 0x1E0 + 0x18) = 0.0f;
+                        *reinterpret_cast<float*>(e + 0x170 + 0x10) = 0.0f;
+                        *reinterpret_cast<float*>(e + 0x170 + 0x18) = 0.0f;
                     }
                 }
 
