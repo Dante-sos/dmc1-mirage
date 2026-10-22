@@ -793,7 +793,12 @@ void void_menu_render(std::vector<Vertex>& verts, float screen_w, float screen_h
         // Outer core (pure white)
         draw_rect(verts, cx, cy, 10.0f, 10.0f, 1.0f, 1.0f, 1.0f, 1.0f);
         // Inner contrast
-        draw_rect(verts, cx + 2.0f, cy + 2.0f, 6.0f, 6.0f, 0.1f, 0.1f, 0.1f, 1.0f);
+        draw_rect(verts, cx + 2.0f, cy + 2.0f, 6.0f, 6.0f, 0.05f, 0.05f, 0.05f, 1.0f);
         draw_rect(verts, cx + 3.0f, cy + 3.0f, 4.0f, 4.0f, 1.0f, 1.0f, 1.0f, 1.0f);
+        // Crosshair ticks
+        draw_rect(verts, cx - 4.0f, cy + 4.0f, 3.0f, 2.0f, 1.0f, 1.0f, 1.0f, 0.90f);
+        draw_rect(verts, cx + 11.0f, cy + 4.0f, 3.0f, 2.0f, 1.0f, 1.0f, 1.0f, 0.90f);
+        draw_rect(verts, cx + 4.0f, cy - 4.0f, 2.0f, 3.0f, 1.0f, 1.0f, 1.0f, 0.90f);
+        draw_rect(verts, cx + 4.0f, cy + 11.0f, 2.0f, 3.0f, 1.0f, 1.0f, 1.0f, 0.90f);
     }
 }
