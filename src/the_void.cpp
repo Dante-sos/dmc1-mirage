@@ -37,7 +37,7 @@ bool     g_stage1_file_saved = false;
 
 std::atomic<bool> g_void_active{false};
 std::atomic<int>  g_void_mode{3};
-std::atomic<bool> g_needs_initial_spawn{false};
+std::atomic<int>  g_initial_spawn_counter{0};
 bool g_prev_f5 = false;
 bool g_prev_back_button = false;
 
@@ -61,6 +61,13 @@ void void_reset_player() {
     }
     write_f32(player + 0x124, rfacing);
 
+    // Clear movement momentum so Dante doesn't slide into walls
+    for (uintptr_t offset : {uintptr_t{0x1AC0 + 0x10}, uintptr_t{0x1E0 + 0x10}}) {
+        write_f32(player + offset, 0.0f);
+        write_f32(player + offset + 4, 0.0f);
+        write_f32(player + offset + 8, 0.0f);
+    }
+
     uintptr_t base = mod_base();
     if (base) {
         float* gspawn = reinterpret_cast<float*>(base + 0x27E82A0);
@@ -68,6 +75,16 @@ void void_reset_player() {
         gspawn[1] = ry;
         gspawn[2] = rz;
         gspawn[3] = rfacing;
+
+        // Also update RoomSrc slot at RVA 0x60AF18 if allocated
+        auto* src_slot = reinterpret_cast<uint8_t**>(base + 0x60AF18);
+        uint8_t* src = src_slot ? *src_slot : nullptr;
+        if (src) {
+            write_f32(src + 0x1E8, rx);
+            write_f32(src + 0x1EC, ry);
+            write_f32(src + 0x1F0, rz);
+            write_f32(src + 0x1F4, rfacing);
+        }
     }
 
     mod_log("the_void: Dante position reset to arena floor (%.1f, %.1f, %.1f)", rx, ry, rz);
@@ -128,7 +145,7 @@ void void_patch_room_tables(bool enable) {
 void void_init() {
     g_void_active.store(false);
     g_void_mode.store(3);
-    g_needs_initial_spawn.store(false);
+    g_initial_spawn_counter.store(0);
     g_prev_f5 = false;
     g_prev_back_button = false;
 }
@@ -136,7 +153,7 @@ void void_init() {
 void void_arm(int mode) {
     g_void_active.store(true);
     g_void_mode.store(mode);
-    g_needs_initial_spawn.store(true);
+    g_initial_spawn_counter.store(180);
     void_patch_mission_table(true);
     void_patch_briefing_skip(true);
     mod_log("the_void: armed practice arena (mission 8, r206.fsd Rusty Key Drainage Chamber, mode %d)", mode);
@@ -148,7 +165,7 @@ void void_disarm() {
         void_patch_briefing_skip(false);
     }
     g_void_active.store(false);
-    g_needs_initial_spawn.store(false);
+    g_initial_spawn_counter.store(0);
     mod_log("the_void: disarmed");
 }
 
@@ -266,7 +283,18 @@ void void_update_frame() {
 
     uint8_t* player = mod_actor();
     if (player) {
-        if (g_needs_initial_spawn.exchange(false)) {
+        // Enforce spawn position continuously during the first 180 frames of entering the arena
+        int remaining = g_initial_spawn_counter.load();
+        if (remaining > 0) {
+            g_initial_spawn_counter.store(remaining - 1);
+            void_reset_player();
+        }
+
+        // Hard guarantee: if Dante is ever positioned in the doorway alcove (near X=7659, Z=-1575),
+        // immediately pop him out onto the arena floor!
+        float cur_x = *reinterpret_cast<float*>(player + 0x1AC0);
+        float cur_z = *reinterpret_cast<float*>(player + 0x1AC8);
+        if (cur_x > 7400.0f && cur_z < -1300.0f) {
             void_reset_player();
         }
 
