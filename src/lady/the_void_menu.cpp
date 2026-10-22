@@ -205,8 +205,36 @@ void void_menu_reset_dummy() {
     uintptr_t base = mod_base();
     if (!base) return;
 
-    int32_t count = *reinterpret_cast<int32_t*>(base + 0x4CB6BA0);
-    auto** enemy_list = reinterpret_cast<uint8_t**>(base + 0x4CB6BB0);
+    constexpr uintptr_t kEnemyCountRva    = 0x4CB6BA0;
+    constexpr uintptr_t kEnemyListRva     = 0x4CB6BB0;
+    constexpr uintptr_t kWaveSpawnFnRva   = 0x247020;
+    constexpr uintptr_t kBladeWaveDescRva = 0x58ED00;
+
+    int32_t count = *reinterpret_cast<int32_t*>(base + kEnemyCountRva);
+    auto** enemy_list = reinterpret_cast<uint8_t**>(base + kEnemyListRva);
+
+    bool has_valid_enemies = false;
+    if (count > 0 && count <= 64 && enemy_list) {
+        for (int i = 0; i < count; ++i) {
+            uint8_t* e = enemy_list[i];
+            if (e && e != player) {
+                auto ptr_val = reinterpret_cast<uintptr_t>(e);
+                if (ptr_val >= 0x10000 && ptr_val <= 0x7FFFFFFFFFFFull && (ptr_val & 7) == 0) {
+                    has_valid_enemies = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (!has_valid_enemies) {
+        typedef void (__fastcall* WaveSpawnFn)(void* wave_desc);
+        auto wave_fn = reinterpret_cast<WaveSpawnFn>(base + kWaveSpawnFnRva);
+        wave_fn(reinterpret_cast<void*>(base + kBladeWaveDescRva));
+        count = *reinterpret_cast<int32_t*>(base + kEnemyCountRva);
+        enemy_list = reinterpret_cast<uint8_t**>(base + kEnemyListRva);
+        mod_log("the_void_menu: reset_dummy spawned wave via wave_fn (count=%d)", count);
+    }
 
     if (count <= 0 || !enemy_list) {
         mod_log("the_void_menu: reset_dummy: no active enemies in room (count=%d)", count);
@@ -228,7 +256,7 @@ void void_menu_reset_dummy() {
     const float x_offsets[3] = {0.0f, -140.0f, 140.0f};
 
     int placed = 0;
-    for (int i = 0; i < count && placed < max_dummies; ++i) {
+    for (int i = 0; i < count; ++i) {
         uint8_t* dummy = enemy_list[i];
         if (!dummy || dummy == player) continue;
         auto ptr_val = reinterpret_cast<uintptr_t>(dummy);
@@ -241,33 +269,42 @@ void void_menu_reset_dummy() {
             continue;
         }
 
-        float off = x_offsets[placed];
-        float dummy_x = px + forward_x * 240.0f + right_x * off;
-        float dummy_z = pz + forward_z * 240.0f + right_z * off;
+        if (placed < max_dummies) {
+            float off = x_offsets[placed];
+            float dummy_x = px + forward_x * 240.0f + right_x * off;
+            float dummy_z = pz + forward_z * 240.0f + right_z * off;
 
-        for (uintptr_t offset : {uintptr_t{0x1AC0}, uintptr_t{0x1E0}, uintptr_t{0x170}}) {
-            *reinterpret_cast<float*>(dummy + offset) = dummy_x;
-            *reinterpret_cast<float*>(dummy + offset + 4) = py;
-            *reinterpret_cast<float*>(dummy + offset + 8) = dummy_z;
+            for (uintptr_t offset : {uintptr_t{0x1AC0}, uintptr_t{0x1E0}, uintptr_t{0x170}}) {
+                *reinterpret_cast<float*>(dummy + offset) = dummy_x;
+                *reinterpret_cast<float*>(dummy + offset + 4) = py;
+                *reinterpret_cast<float*>(dummy + offset + 8) = dummy_z;
+            }
+            *reinterpret_cast<float*>(dummy + 0x124) = dummy_yaw;
+
+            // Zero momentum
+            for (uintptr_t offset : {uintptr_t{0x1AC0 + 0x10}, uintptr_t{0x1E0 + 0x10}, uintptr_t{0x170 + 0x10}}) {
+                *reinterpret_cast<float*>(dummy + offset) = 0.0f;
+                *reinterpret_cast<float*>(dummy + offset + 4) = 0.0f;
+                *reinterpret_cast<float*>(dummy + offset + 8) = 0.0f;
+            }
+
+            // Revive & refill HP to dummy_hp
+            uint16_t hp_val = static_cast<uint16_t>(g_void_settings.dummy_hp);
+            *reinterpret_cast<uint16_t*>(dummy + 0x1BCE) = hp_val;
+            *reinterpret_cast<uint16_t*>(dummy + 0x1BD0) = hp_val;
+
+            // Reset defeated state flag
+            *reinterpret_cast<uint16_t*>(dummy + 0x17A2) = 0;
+
+            placed++;
+        } else {
+            // Suppress extra dummy beyond selected count
+            *reinterpret_cast<uint16_t*>(dummy + 0x1BCE) = 0;
+            *reinterpret_cast<uint16_t*>(dummy + 0x17A2) = 0xFFFF;
+            for (uintptr_t offset : {uintptr_t{0x1AC0}, uintptr_t{0x1E0}, uintptr_t{0x170}}) {
+                *reinterpret_cast<float*>(dummy + offset + 4) = -5000.0f;
+            }
         }
-        *reinterpret_cast<float*>(dummy + 0x124) = dummy_yaw;
-
-        // Zero momentum
-        for (uintptr_t offset : {uintptr_t{0x1AC0 + 0x10}, uintptr_t{0x1E0 + 0x10}, uintptr_t{0x170 + 0x10}}) {
-            *reinterpret_cast<float*>(dummy + offset) = 0.0f;
-            *reinterpret_cast<float*>(dummy + offset + 4) = 0.0f;
-            *reinterpret_cast<float*>(dummy + offset + 8) = 0.0f;
-        }
-
-        // Revive & refill HP to dummy_hp
-        uint16_t hp_val = static_cast<uint16_t>(g_void_settings.dummy_hp);
-        *reinterpret_cast<uint16_t*>(dummy + 0x1BCE) = hp_val;
-        *reinterpret_cast<uint16_t*>(dummy + 0x1BD0) = hp_val;
-
-        // Reset defeated state flag
-        *reinterpret_cast<uint16_t*>(dummy + 0x17A2) = 0;
-
-        placed++;
     }
 
     mod_log("the_void_menu: reset %d dummy(s) in front of Dante (total_count=%d)", placed, count);
@@ -296,6 +333,9 @@ void void_menu_kill_dummy() {
 
         *reinterpret_cast<uint16_t*>(e + 0x1BCE) = 0; // set HP to 0
         *reinterpret_cast<uint16_t*>(e + 0x17A2) = 0xFFFF; // mark defeated
+        for (uintptr_t offset : {uintptr_t{0x1AC0}, uintptr_t{0x1E0}, uintptr_t{0x170}}) {
+            *reinterpret_cast<float*>(e + offset + 4) = -5000.0f;
+        }
     }
     mod_log("the_void_menu: dummy despawned / killed");
 }

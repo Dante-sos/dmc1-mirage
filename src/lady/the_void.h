@@ -16,6 +16,7 @@ void void_get_spawn_pos(float out_pos[4]);
 
 void void_patch_mission_table(bool enable);
 void void_patch_briefing_skip(bool enable);
+void void_patch_spawn_check(bool enable);
 void void_on_menu_loop(uint8_t* config);
 void void_on_menu_launch(uint8_t* config);
 void void_update_frame();

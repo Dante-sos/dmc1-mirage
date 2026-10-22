@@ -16,6 +16,9 @@ constexpr uintptr_t kBriefingJumpRva      = 0x24FE5E;
 constexpr uintptr_t kRoomTableEntry22Rva  = 0x5165F8;
 constexpr uintptr_t kRoomTableEntry31Rva  = 0x5166D0;
 constexpr uintptr_t kStage1Room22FileRva  = 0x5A45BC;
+constexpr uintptr_t kBladeMissionCheckRva = 0x36E4DE;
+constexpr uintptr_t kWaveSpawnFnRva       = 0x247020;
+constexpr uintptr_t kBladeWaveDescRva     = 0x58ED00;
 
 constexpr uint32_t kVoidStage = 1;
 constexpr uint32_t kVoidRoom  = 22;
@@ -31,6 +34,12 @@ constexpr float kOrigSpawnPos[4] = {5000.0f, 150.0f, -2750.0f, -1.72f};
 // Patched:  E9 B8 00 00 00 90  (jmp 0x14024ff1b; nop)
 const uint8_t kOrigBriefingJump[6]    = {0x0F, 0x84, 0xB7, 0x00, 0x00, 0x00};
 const uint8_t kPatchedBriefingJump[6] = {0xE9, 0xB8, 0x00, 0x00, 0x00, 0x90};
+
+// At RVA 0x36E4DE in dmc1.exe:
+// Original: 72 7A  (jb 0x14036e55a; skips Blade wave spawn if Mission < 11)
+// Patched:  90 90  (nop; nop; allows Blade wave spawn in Mission 8)
+const uint8_t kOrigBladeCheck[2]    = {0x72, 0x7A};
+const uint8_t kPatchedBladeCheck[2] = {0x90, 0x90};
 
 uint8_t  g_saved_room_entry_22[24] = {};
 bool     g_room_entry_saved = false;
@@ -188,6 +197,7 @@ void void_arm(int mode) {
     std::memset(s_last_enemy_hp, 0, sizeof(s_last_enemy_hp));
     void_patch_mission_table(true);
     void_patch_briefing_skip(true);
+    void_patch_spawn_check(true);
     mod_log("the_void: armed practice arena (mission 8, r206.fsd Rusty Key Drainage Chamber, mode %d)", mode);
 }
 
@@ -195,6 +205,7 @@ void void_disarm() {
     if (g_void_active.load()) {
         void_patch_mission_table(false);
         void_patch_briefing_skip(false);
+        void_patch_spawn_check(false);
     }
     g_void_active.store(false);
     g_initial_spawn_counter.store(0);
@@ -264,6 +275,25 @@ void void_patch_briefing_skip(bool enable) {
         }
         VirtualProtect(site, sizeof(kOrigBriefingJump), old_prot, &old_prot);
         FlushInstructionCache(GetCurrentProcess(), site, sizeof(kOrigBriefingJump));
+    }
+}
+
+void void_patch_spawn_check(bool enable) {
+    uintptr_t base = mod_base();
+    if (!base) return;
+
+    uint8_t* site = reinterpret_cast<uint8_t*>(base + kBladeMissionCheckRva);
+    DWORD old_prot = 0;
+    if (VirtualProtect(site, sizeof(kOrigBladeCheck), PAGE_EXECUTE_READWRITE, &old_prot)) {
+        if (enable) {
+            std::memcpy(site, kPatchedBladeCheck, sizeof(kPatchedBladeCheck));
+            mod_log("the_void: patched Blade mission check at %p to NOPs (allows spawn in mission 8)", site);
+        } else {
+            std::memcpy(site, kOrigBladeCheck, sizeof(kOrigBladeCheck));
+            mod_log("the_void: restored Blade mission check at %p to jb", site);
+        }
+        VirtualProtect(site, sizeof(kOrigBladeCheck), old_prot, &old_prot);
+        FlushInstructionCache(GetCurrentProcess(), site, sizeof(kOrigBladeCheck));
     }
 }
 
@@ -347,6 +377,13 @@ void void_update_frame() {
             uintptr_t base_c = mod_base();
             if (base_c) {
                 int32_t c = *reinterpret_cast<int32_t*>(base_c + kEnemyCountRva);
+                if (c <= 0) {
+                    typedef void (__fastcall* WaveSpawnFn)(void* wave_desc);
+                    auto wave_fn = reinterpret_cast<WaveSpawnFn>(base_c + kWaveSpawnFnRva);
+                    wave_fn(reinterpret_cast<void*>(base_c + kBladeWaveDescRva));
+                    c = *reinterpret_cast<int32_t*>(base_c + kEnemyCountRva);
+                    mod_log("the_void: initial frame fallback spawned wave (count=%d)", c);
+                }
                 if (c > 0) {
                     void_menu_reset_dummy();
                 }
@@ -403,11 +440,13 @@ void void_update_frame() {
                 if (i >= max_dummies) {
                     // Suppress extra dummy beyond selected count
                     *reinterpret_cast<uint16_t*>(e + 0x1BCE) = 0;
+                    *reinterpret_cast<uint16_t*>(e + 0x17A2) = 0xFFFF;
                     continue;
                 }
 
                 uint16_t* ehp = reinterpret_cast<uint16_t*>(e + 0x1BCE);
                 uint16_t* emax = reinterpret_cast<uint16_t*>(e + 0x1BD0);
+                uint16_t defeated = *reinterpret_cast<uint16_t*>(e + 0x17A2);
 
                 // A. Damage Telemetry tracking
                 if (s_last_enemy_hp[i] > 0 && *ehp < s_last_enemy_hp[i]) {
@@ -415,8 +454,8 @@ void void_update_frame() {
                     void_menu_on_enemy_damage(dmg);
                 }
 
-                // B. Immortal Dummy HP lock
-                if (g_void_settings.immortal_dummy) {
+                // B. Immortal Dummy HP lock (only if not defeated/killed)
+                if (g_void_settings.immortal_dummy && defeated == 0) {
                     uint16_t target_hp = static_cast<uint16_t>(g_void_settings.dummy_hp);
                     if (*ehp < 1000 || *ehp == 0) {
                         *ehp = target_hp;
