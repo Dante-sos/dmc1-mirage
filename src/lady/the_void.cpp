@@ -457,9 +457,9 @@ void void_update_frame() {
                     if (*pos_y > -110.0f) { // Airborne
                         float* vel_y = reinterpret_cast<float*>(e + 0x1AC0 + 0x14);
                         float* phys_vel_y = reinterpret_cast<float*>(e + 0x1E0 + 0x14);
-                        if (*vel_y < -4.0f) { // Falling fast
-                            *vel_y = -4.0f; // Cushion gravity for extended aerial juggles
-                            *phys_vel_y = -4.0f;
+                        if (*vel_y < -3.5f) { // Falling fast
+                            *vel_y = -3.5f; // Cushion gravity for extended aerial juggles
+                            *phys_vel_y = -3.5f;
                         }
                     }
                 }
