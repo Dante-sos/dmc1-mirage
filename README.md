@@ -40,14 +40,31 @@ Switch styles during gameplay using the D-Pad or keyboard keys **Z, X, C, V**:
 - **Air Trick (Forward Warp)**: Hold **Lock-On (RB / Space)** + **Forward (W)** + **B / L** to instantly warp forward directly into attack range.
 - **Trick Down (Retreat Warp)**: Hold **Lock-On (RB / Space)** + **Back (S)** + **B / L** to warp backward and escape enemy attacks.
 
+## The Void (Training Arena)
+
+Select **The Void** from the title screen Mission Select menu to enter the infinite practice room.
+
+### Arena Controls & Settings
+- **Insert Key**: Toggle the floating practice configuration menu.
+- **Monochrome High-Transparency Menu**: Sleek black-and-white glass interface with atomic mouse click registration.
+- **Enemy Dummies**: Spawn training dummies (Marionette, Sin Scissors, Plasma, Shadow, Frost, Nobody, Fetish, Blade) with customizable AI states:
+  - **Stand Still**: Immobile dummy for combo routing and juggle testing.
+  - **Guard**: Constant defense for hit-reaction checks.
+  - **Attack**: Hostile AI for counter-timing rehearsal.
+  - **Evade**: Evasive maneuvers for chase down tracking.
+- **Dummy Count**: Dynamically scale between 1 and 4 dummies with automatic circular formation spacing.
+- **Real-Time Telemetry HUD**: Live combo counter, total damage, juggle height tracking, and air-time measurement.
+- **Reset Formation**: Tap **Reset Position** or press **Home** to instantly teleport dummies 300 units in front of Dante with zeroed velocity and refreshed health.
+
 ## Build
 
 The proxy is built with g++ from the `dmc1-switch` directory:
 
 ```powershell
-g++ -shared -O2 -std=c++17 -static -static-libgcc -static-libstdc++ -I src -I src/dante -I src/trish -I src/lady -I src/power -I src/jackpot -o build\XINPUT9_1_0.dll src\jackpot\xinput_proxy.cpp src\power\mod.cpp src\jackpot\ui.cpp src\dante\style.cpp src\lady\style_trickster.cpp src\lady\the_void.cpp src\trish\coordinates.cpp xinput.def -ld3d11 -ldxgi -ld3dcompiler -lgdiplus -lgdi32 -lole32 -luuid -luser32
+g++ -shared -O2 -std=c++17 -static -static-libgcc -static-libstdc++ -I src -I src/dante -I src/trish -I src/lady -I src/power -I src/jackpot -o build\XINPUT9_1_0.dll src\jackpot\xinput_proxy.cpp src\power\mod.cpp src\jackpot\ui.cpp src\dante\style.cpp src\dante\style_trickster.cpp src\lady\the_void.cpp src\lady\the_void_menu.cpp src\trish\coordinates.cpp xinput.def -ld3d11 -ldxgi -ld3dcompiler -lgdiplus -lgdi32 -lole32 -luuid -luser32
 ```
 
 `tools/build_installer.py` then packs that DLL into `ApplyDMC1Switch.exe`.
 
 This project is not affiliated with Capcom.
+
