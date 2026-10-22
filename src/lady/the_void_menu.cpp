@@ -406,7 +406,7 @@ void void_menu_update() {
 
     // 3. Check combo expiration
     uint64_t now = get_time_ms();
-    if (g_void_settings.combo_hits > 0 && now - g_void_settings.last_hit_tick > 2500) {
+    if (g_void_settings.combo_hits > 0 && now - g_void_settings.last_hit_tick > 3000) {
         g_void_settings.combo_hits = 0;
         g_void_settings.current_combo_damage = 0.0f;
         g_void_settings.dps = 0.0f;
@@ -419,7 +419,7 @@ void void_menu_render(std::vector<Vertex>& verts, float screen_w, float screen_h
     // 1. Render Combo Telemetry HUD (when enabled)
     if (g_void_settings.show_telemetry) {
         uint64_t now = get_time_ms();
-        bool active = (g_void_settings.combo_hits > 0) || (now - g_void_settings.last_hit_tick < 3000);
+        bool active = (g_void_settings.combo_hits > 0) || (now - g_void_settings.last_hit_tick < 3500);
         if (active) {
             float hud_w = 280.0f;
             float hud_h = 145.0f;
