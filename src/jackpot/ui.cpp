@@ -1173,7 +1173,7 @@ void draw_screen(float width, float height) {
         }
         if (mod_is_the_void()) {
             std::vector<Vertex> verts;
-            verts.reserve(512);
+            verts.reserve(1024);
             void_menu_render(verts, width, height);
             if (!verts.empty()) {
                 submit(verts, width, height, 0.0f, g_font_view);
