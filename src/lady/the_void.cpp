@@ -17,7 +17,7 @@ constexpr uintptr_t kStage1Room22FileRva  = 0x5A45BC;
 
 constexpr uint32_t kVoidStage = 1;
 constexpr uint32_t kVoidRoom  = 22;
-constexpr float kVoidSpawnPos[4] = {7600.0f, 0.0f, -1418.0f, -1.57f};
+constexpr float kVoidSpawnPos[4] = {8341.0f, 0.0f, -1418.0f, -2.10f};
 
 // Native Mission 8 starting configuration in r11d.fsd (Room 22 / 0x16)
 constexpr uint32_t kOrigStage = 1;
@@ -153,7 +153,7 @@ void void_init() {
 void void_arm(int mode) {
     g_void_active.store(true);
     g_void_mode.store(mode);
-    g_initial_spawn_counter.store(180);
+    g_initial_spawn_counter.store(15);
     void_patch_mission_table(true);
     void_patch_briefing_skip(true);
     mod_log("the_void: armed practice arena (mission 8, r206.fsd Rusty Key Drainage Chamber, mode %d)", mode);
@@ -287,14 +287,6 @@ void void_update_frame() {
         int remaining = g_initial_spawn_counter.load();
         if (remaining > 0) {
             g_initial_spawn_counter.store(remaining - 1);
-            void_reset_player();
-        }
-
-        // Hard guarantee: if Dante is ever pushed back into the doorway alcove (behind the entrance barrier),
-        // immediately pop him out onto the open arena floor!
-        float cur_x = *reinterpret_cast<float*>(player + 0x1AC0);
-        float cur_z = *reinterpret_cast<float*>(player + 0x1AC8);
-        if (cur_x > 7750.0f && cur_z < -1100.0f && cur_z > -1700.0f) {
             void_reset_player();
         }
 
