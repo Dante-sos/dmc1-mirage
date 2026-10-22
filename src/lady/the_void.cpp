@@ -1,8 +1,10 @@
 #include "the_void.h"
+#include "the_void_menu.h"
 #include "mod.h"
 
 #include <atomic>
 #include <cstring>
+#include <algorithm>
 #include <initializer_list>
 
 namespace {
@@ -40,10 +42,14 @@ std::atomic<int>  g_void_mode{3};
 std::atomic<int>  g_initial_spawn_counter{0};
 bool g_prev_f5 = false;
 bool g_prev_back_button = false;
+bool g_prev_sticks = false;
+uint16_t s_last_enemy_hp[64] = {};
 
 void write_f32(uint8_t* address, float value) {
     std::memcpy(address, &value, sizeof(value));
 }
+
+}  // namespace
 
 void void_reset_player() {
     uint8_t* player = mod_actor();
@@ -90,6 +96,44 @@ void void_reset_player() {
     mod_log("the_void: Dante position reset to arena floor (%.1f, %.1f, %.1f)", rx, ry, rz);
 }
 
+uintptr_t void_get_subtable_for_type(DummyType type) {
+    uintptr_t base = mod_base();
+    if (!base) return 0;
+    switch (type) {
+        case DummyType::MarionetteBlade:
+        case DummyType::MarionetteShotgun:
+            return base + 0x519500; // Room 0 (rr100_2 Marionettes)
+        case DummyType::SinScissors:
+            return base + 0x517380; // Room 4 (rr106_2 Sin Scissors)
+        case DummyType::SinScythe:
+            return base + 0x512060; // Room 9 (rr10c_1 Sin Scythe)
+        case DummyType::Shadow:
+            return base + 0x51A540; // Room 26 (rr201_3 Shadow)
+        case DummyType::Frost:
+            return base + 0x518DA0; // Room 20 (rr11b_2 Frost)
+        case DummyType::Blade:
+            return base + 0x511160; // Room 22 (rr11d_1 Blade)
+        case DummyType::Nobody:
+            return base + 0x5193D0; // Room 6 (rr109_2 Nobody)
+        default:
+            return base + 0x519500;
+    }
+}
+
+void void_apply_dummy_subtable(DummyType type) {
+    uintptr_t base = mod_base();
+    if (!base) return;
+    auto* entry22 = reinterpret_cast<uint8_t*>(base + kRoomTableEntry22Rva);
+    if (!entry22) return;
+    uintptr_t sub_tbl = void_get_subtable_for_type(type);
+    DWORD old_prot = 0;
+    if (VirtualProtect(entry22 + 16, sizeof(uint64_t), PAGE_EXECUTE_READWRITE, &old_prot)) {
+        *reinterpret_cast<uint64_t*>(entry22 + 16) = sub_tbl;
+        VirtualProtect(entry22 + 16, sizeof(uint64_t), old_prot, &old_prot);
+        mod_log("the_void: applied dummy subtable %p for type %d", reinterpret_cast<void*>(sub_tbl), static_cast<int>(type));
+    }
+}
+
 void void_patch_room_tables(bool enable) {
     uintptr_t base = mod_base();
     if (!base) return;
@@ -107,8 +151,14 @@ void void_patch_room_tables(bool enable) {
                     std::memcpy(g_saved_room_entry_22, entry22, 24);
                     g_room_entry_saved = true;
                 }
-                std::memcpy(entry22, entry31, 24);
-                mod_log("the_void: patched Room Table Entry 22 with Entry 31 (r206.fsd Rusty Key Chamber descriptor)");
+                // Use r206.fsd room geometry & collision archive list from entry31
+                *reinterpret_cast<uint64_t*>(entry22 + 0) = *reinterpret_cast<const uint64_t*>(entry31 + 0);
+                *reinterpret_cast<uint32_t*>(entry22 + 8) = *reinterpret_cast<const uint32_t*>(entry31 + 8);
+                *reinterpret_cast<uint32_t*>(entry22 + 12) = 0;
+                // Hook enemy spawn subtable to actively spawn the dummy
+                uintptr_t sub_tbl = void_get_subtable_for_type(g_void_settings.dummy_type);
+                *reinterpret_cast<uint64_t*>(entry22 + 16) = sub_tbl;
+                mod_log("the_void: patched Room Table Entry 22 (files=r206.fsd, subtable=%p)", reinterpret_cast<void*>(sub_tbl));
             } else if (g_room_entry_saved) {
                 std::memcpy(entry22, g_saved_room_entry_22, 24);
                 mod_log("the_void: restored Room Table Entry 22");
@@ -140,20 +190,22 @@ void void_patch_room_tables(bool enable) {
     }
 }
 
-}  // namespace
-
 void void_init() {
     g_void_active.store(false);
     g_void_mode.store(3);
     g_initial_spawn_counter.store(0);
     g_prev_f5 = false;
     g_prev_back_button = false;
+    g_prev_sticks = false;
+    std::memset(s_last_enemy_hp, 0, sizeof(s_last_enemy_hp));
 }
 
 void void_arm(int mode) {
     g_void_active.store(true);
     g_void_mode.store(mode);
     g_initial_spawn_counter.store(15);
+    g_prev_sticks = false;
+    std::memset(s_last_enemy_hp, 0, sizeof(s_last_enemy_hp));
     void_patch_mission_table(true);
     void_patch_briefing_skip(true);
     mod_log("the_void: armed practice arena (mission 8, r206.fsd Rusty Key Drainage Chamber, mode %d)", mode);
@@ -265,10 +317,20 @@ void void_on_menu_launch(uint8_t* config) {
 void void_on_pad(XInputState* state) {
     if (!g_void_active.load() || !mod_in_game() || !state) return;
 
-    // Check Back / Select button (0x0020)
+    // 1. Check L3 + R3 (Thumbstick clicks: 0x0040 | 0x0080) to toggle Void Menu
+    bool sticks_pressed = (state->gamepad.buttons & (0x0040 | 0x0080)) == (0x0040 | 0x0080);
+    if (sticks_pressed && !g_prev_sticks) {
+        void_menu_toggle();
+    }
+    g_prev_sticks = sticks_pressed;
+    if (sticks_pressed) {
+        state->gamepad.buttons &= ~(0x0040 | 0x0080);
+    }
+
+    // 2. Check Back / Select button (0x0020) for Quick Dummy Reset
     bool back_pressed = (state->gamepad.buttons & 0x0020) != 0;
     if (back_pressed && !g_prev_back_button) {
-        void_reset_player();
+        void_menu_reset_dummy();
     }
     g_prev_back_button = back_pressed;
 
@@ -276,52 +338,128 @@ void void_on_pad(XInputState* state) {
     if (back_pressed) {
         state->gamepad.buttons &= ~0x0020;
     }
+
+    // 3. While Void Menu is open, block gameplay actions
+    if (void_menu_is_open()) {
+        state->gamepad.buttons &= (0x0040 | 0x0080 | 0x0020);
+        state->gamepad.leftX = 0;
+        state->gamepad.leftY = 0;
+        state->gamepad.rightX = 0;
+        state->gamepad.rightY = 0;
+        state->gamepad.leftTrigger = 0;
+        state->gamepad.rightTrigger = 0;
+    }
 }
 
 void void_update_frame() {
     if (!g_void_active.load() || !mod_in_game()) return;
 
+    // Update telemetry timer expiration
+    void_menu_update();
+
     uint8_t* player = mod_actor();
     if (player) {
-        // Enforce spawn position continuously during the first 180 frames of entering the arena
+        // Enforce spawn position continuously during the first 15 frames of entering the arena
         int remaining = g_initial_spawn_counter.load();
         if (remaining > 0) {
             g_initial_spawn_counter.store(remaining - 1);
             void_reset_player();
+            uintptr_t base_c = mod_base();
+            if (base_c) {
+                int32_t c = *reinterpret_cast<int32_t*>(base_c + kEnemyCountRva);
+                if (c > 0) {
+                    void_menu_reset_dummy();
+                }
+            }
         }
 
         // 1. Maintain full HP for Dante (God Mode in The Void)
-        // Strictly at 0x1BCE (current HP), never touching 0x1BC8 or 0x1C00
-        uint16_t max_hp = *reinterpret_cast<uint16_t*>(player + 0x1BD0);
-        if (max_hp == 0 || max_hp > 30000) {
-            max_hp = 3000;
+        if (g_void_settings.godmode_player) {
+            uint16_t max_hp = *reinterpret_cast<uint16_t*>(player + 0x1BD0);
+            if (max_hp == 0 || max_hp > 30000) {
+                max_hp = 3000;
+            }
+            *reinterpret_cast<uint16_t*>(player + 0x1BCE) = max_hp;
         }
-        *reinterpret_cast<uint16_t*>(player + 0x1BCE) = max_hp;
 
-        // 2. F5 key shortcut to reset position to arena center
+        // 2. Maintain Infinite Devil Trigger (Full 10 Runes)
+        if (g_void_settings.infinite_dt) {
+            uint16_t max_dt = *reinterpret_cast<uint16_t*>(player + 0x1BD4);
+            if (max_dt < 1000) {
+                max_dt = 1000;
+                *reinterpret_cast<uint16_t*>(player + 0x1BD4) = 1000; // Unlock all 10 DT runes
+            }
+            *reinterpret_cast<uint16_t*>(player + 0x1BD2) = max_dt;
+        }
+
+        // 3. F5 / Home key shortcut to quick-reset dummy position in front of Dante
         bool key_f5 = (GetAsyncKeyState(VK_F5) & 0x8000) != 0;
         if (key_f5 && !g_prev_f5) {
-            void_reset_player();
+            void_menu_reset_dummy();
         }
         g_prev_f5 = key_f5;
     }
 
-    // 3. Maintain target / enemy HP so practice session never ends
+    // 4. Enemy Dummy Management (Damage Telemetry, Immortal HP, Stand Still AI, Infinite Juggle)
     uintptr_t base = mod_base();
     if (base) {
         int32_t count = *reinterpret_cast<int32_t*>(base + kEnemyCountRva);
         auto** enemy_list = reinterpret_cast<uint8_t**>(base + kEnemyListRva);
         if (count > 0 && count <= 64 && enemy_list) {
+            int max_dummies = std::clamp(g_void_settings.dummy_count, 1, 3);
             for (int i = 0; i < count; ++i) {
                 uint8_t* e = enemy_list[i];
                 if (!e || e == player) continue;
                 auto ptr_val = reinterpret_cast<uintptr_t>(e);
                 if (ptr_val < 0x10000 || ptr_val > 0x7FFFFFFFFFFFull || (ptr_val & 7) != 0) continue;
 
+                if (i >= max_dummies) {
+                    // Suppress extra dummy beyond selected count
+                    *reinterpret_cast<uint16_t*>(e + 0x1BCE) = 0;
+                    continue;
+                }
+
                 uint16_t* ehp = reinterpret_cast<uint16_t*>(e + 0x1BCE);
                 uint16_t* emax = reinterpret_cast<uint16_t*>(e + 0x1BD0);
-                if (*ehp > 0 && *ehp < 3000) {
-                    *ehp = (*emax > 0 && *emax <= 30000) ? *emax : 5000;
+
+                // A. Damage Telemetry tracking
+                if (s_last_enemy_hp[i] > 0 && *ehp < s_last_enemy_hp[i]) {
+                    float dmg = static_cast<float>(s_last_enemy_hp[i] - *ehp) * g_void_settings.damage_mult;
+                    void_menu_on_enemy_damage(dmg);
+                }
+
+                // B. Immortal Dummy HP lock
+                if (g_void_settings.immortal_dummy) {
+                    uint16_t target_hp = static_cast<uint16_t>(g_void_settings.dummy_hp);
+                    if (*ehp < 1000 || *ehp == 0) {
+                        *ehp = target_hp;
+                        if (*emax < target_hp) *emax = target_hp;
+                    }
+                }
+                s_last_enemy_hp[i] = *ehp;
+
+                // C. Stand Still AI (Punching Bag / Sandbag)
+                float* pos_y = reinterpret_cast<float*>(e + 0x1AC4);
+                if (g_void_settings.dummy_ai == DummyAiMode::StandStill) {
+                    // Freeze horizontal wander when on the arena floor
+                    if (*pos_y <= -110.0f) {
+                        *reinterpret_cast<float*>(e + 0x1AC0 + 0x10) = 0.0f; // vel X
+                        *reinterpret_cast<float*>(e + 0x1AC0 + 0x18) = 0.0f; // vel Z
+                        *reinterpret_cast<float*>(e + 0x1E0 + 0x10) = 0.0f;
+                        *reinterpret_cast<float*>(e + 0x1E0 + 0x18) = 0.0f;
+                    }
+                }
+
+                // D. Infinite Juggle / Floatier Air Physics
+                if (g_void_settings.infinite_juggle) {
+                    if (*pos_y > -110.0f) { // Airborne
+                        float* vel_y = reinterpret_cast<float*>(e + 0x1AC0 + 0x14);
+                        float* phys_vel_y = reinterpret_cast<float*>(e + 0x1E0 + 0x14);
+                        if (*vel_y < -4.0f) { // Falling fast
+                            *vel_y = -4.0f; // Cushion gravity for extended aerial juggles
+                            *phys_vel_y = -4.0f;
+                        }
+                    }
                 }
             }
         }
