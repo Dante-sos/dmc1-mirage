@@ -374,18 +374,20 @@ void void_update_frame() {
         if (remaining > 0) {
             g_initial_spawn_counter.store(remaining - 1);
             void_reset_player();
-            uintptr_t base_c = mod_base();
-            if (base_c) {
-                int32_t c = *reinterpret_cast<int32_t*>(base_c + kEnemyCountRva);
-                if (c <= 0) {
-                    typedef void (__fastcall* WaveSpawnFn)(void* wave_desc);
-                    auto wave_fn = reinterpret_cast<WaveSpawnFn>(base_c + kWaveSpawnFnRva);
-                    wave_fn(reinterpret_cast<void*>(base_c + kBladeWaveDescRva));
-                    c = *reinterpret_cast<int32_t*>(base_c + kEnemyCountRva);
-                    mod_log("the_void: initial frame fallback spawned wave (count=%d)", c);
-                }
-                if (c > 0) {
-                    void_menu_reset_dummy();
+            if (remaining == 1) {
+                uintptr_t base_c = mod_base();
+                if (base_c) {
+                    int32_t c = *reinterpret_cast<int32_t*>(base_c + kEnemyCountRva);
+                    if (c <= 0) {
+                        typedef void (__fastcall* WaveSpawnFn)(void* wave_desc);
+                        auto wave_fn = reinterpret_cast<WaveSpawnFn>(base_c + kWaveSpawnFnRva);
+                        wave_fn(reinterpret_cast<void*>(base_c + kBladeWaveDescRva));
+                        c = *reinterpret_cast<int32_t*>(base_c + kEnemyCountRva);
+                        mod_log("the_void: stabilized frame fallback spawned wave (count=%d)", c);
+                    }
+                    if (c > 0) {
+                        void_menu_reset_dummy();
+                    }
                 }
             }
         }
@@ -440,13 +442,13 @@ void void_update_frame() {
                 if (i >= max_dummies) {
                     // Suppress extra dummy beyond selected count
                     *reinterpret_cast<uint16_t*>(e + 0x1BCE) = 0;
-                    *reinterpret_cast<uint16_t*>(e + 0x17A2) = 0xFFFF;
+                    *reinterpret_cast<uint16_t*>(e + 0x17A2) = 0;
                     continue;
                 }
 
                 uint16_t* ehp = reinterpret_cast<uint16_t*>(e + 0x1BCE);
                 uint16_t* emax = reinterpret_cast<uint16_t*>(e + 0x1BD0);
-                uint16_t defeated = *reinterpret_cast<uint16_t*>(e + 0x17A2);
+                uint16_t alive_flag = *reinterpret_cast<uint16_t*>(e + 0x17A2);
 
                 // A. Damage Telemetry tracking
                 if (s_last_enemy_hp[i] > 0 && *ehp < s_last_enemy_hp[i]) {
@@ -454,8 +456,8 @@ void void_update_frame() {
                     void_menu_on_enemy_damage(dmg);
                 }
 
-                // B. Immortal Dummy HP lock (only if not defeated/killed)
-                if (g_void_settings.immortal_dummy && defeated == 0) {
+                // B. Immortal Dummy HP lock (only if enemy is alive: alive_flag != 0)
+                if (g_void_settings.immortal_dummy && alive_flag != 0) {
                     uint16_t target_hp = static_cast<uint16_t>(g_void_settings.dummy_hp);
                     if (*ehp < 1000 || *ehp == 0) {
                         *ehp = target_hp;
@@ -467,14 +469,12 @@ void void_update_frame() {
                 // C. Stand Still AI (Punching Bag / Sandbag)
                 float* pos_y = reinterpret_cast<float*>(e + 0x1AC4);
                 if (g_void_settings.dummy_ai == DummyAiMode::StandStill) {
-                    // Freeze horizontal wander when on the arena floor
+                    // Freeze horizontal wander when on the arena floor (NEVER touch 0x170/0x180!)
                     if (*pos_y <= -110.0f) {
                         *reinterpret_cast<float*>(e + 0x1AC0 + 0x10) = 0.0f; // vel X
                         *reinterpret_cast<float*>(e + 0x1AC0 + 0x18) = 0.0f; // vel Z
                         *reinterpret_cast<float*>(e + 0x1E0 + 0x10) = 0.0f;
                         *reinterpret_cast<float*>(e + 0x1E0 + 0x18) = 0.0f;
-                        *reinterpret_cast<float*>(e + 0x170 + 0x10) = 0.0f;
-                        *reinterpret_cast<float*>(e + 0x170 + 0x18) = 0.0f;
                     }
                 }
 

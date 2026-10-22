@@ -274,15 +274,16 @@ void void_menu_reset_dummy() {
             float dummy_x = px + forward_x * 240.0f + right_x * off;
             float dummy_z = pz + forward_z * 240.0f + right_z * off;
 
-            for (uintptr_t offset : {uintptr_t{0x1AC0}, uintptr_t{0x1E0}, uintptr_t{0x170}}) {
+            // Only update World Pos (0x1AC0) and Physics Pos (0x1E0) - never touch 0x170!
+            for (uintptr_t offset : {uintptr_t{0x1AC0}, uintptr_t{0x1E0}}) {
                 *reinterpret_cast<float*>(dummy + offset) = dummy_x;
                 *reinterpret_cast<float*>(dummy + offset + 4) = py;
                 *reinterpret_cast<float*>(dummy + offset + 8) = dummy_z;
             }
             *reinterpret_cast<float*>(dummy + 0x124) = dummy_yaw;
 
-            // Zero momentum
-            for (uintptr_t offset : {uintptr_t{0x1AC0 + 0x10}, uintptr_t{0x1E0 + 0x10}, uintptr_t{0x170 + 0x10}}) {
+            // Zero velocity on World and Physics - never touch 0x170+0x10 (which is 0x180 matrix ptr!)
+            for (uintptr_t offset : {uintptr_t{0x1AC0 + 0x10}, uintptr_t{0x1E0 + 0x10}}) {
                 *reinterpret_cast<float*>(dummy + offset) = 0.0f;
                 *reinterpret_cast<float*>(dummy + offset + 4) = 0.0f;
                 *reinterpret_cast<float*>(dummy + offset + 8) = 0.0f;
@@ -293,17 +294,29 @@ void void_menu_reset_dummy() {
             *reinterpret_cast<uint16_t*>(dummy + 0x1BCE) = hp_val;
             *reinterpret_cast<uint16_t*>(dummy + 0x1BD0) = hp_val;
 
-            // Reset defeated state flag
-            *reinterpret_cast<uint16_t*>(dummy + 0x17A2) = 0;
+            // Reset room alive counter (0x0bb8 = 3000)
+            *reinterpret_cast<uint16_t*>(dummy + 0x17A2) = 0x0BB8;
 
             placed++;
         } else {
-            // Suppress extra dummy beyond selected count
-            *reinterpret_cast<uint16_t*>(dummy + 0x1BCE) = 0;
-            *reinterpret_cast<uint16_t*>(dummy + 0x17A2) = 0xFFFF;
-            for (uintptr_t offset : {uintptr_t{0x1AC0}, uintptr_t{0x1E0}, uintptr_t{0x170}}) {
-                *reinterpret_cast<float*>(dummy + offset + 4) = -5000.0f;
+            // Keep extra dummy safely behind Dante on the arena floor (no matrix corruption)
+            float off = x_offsets[placed % 3];
+            float dummy_x = px - forward_x * 900.0f + right_x * off;
+            float dummy_z = pz - forward_z * 900.0f + right_z * off;
+
+            for (uintptr_t offset : {uintptr_t{0x1AC0}, uintptr_t{0x1E0}}) {
+                *reinterpret_cast<float*>(dummy + offset) = dummy_x;
+                *reinterpret_cast<float*>(dummy + offset + 4) = py;
+                *reinterpret_cast<float*>(dummy + offset + 8) = dummy_z;
             }
+            for (uintptr_t offset : {uintptr_t{0x1AC0 + 0x10}, uintptr_t{0x1E0 + 0x10}}) {
+                *reinterpret_cast<float*>(dummy + offset) = 0.0f;
+                *reinterpret_cast<float*>(dummy + offset + 4) = 0.0f;
+                *reinterpret_cast<float*>(dummy + offset + 8) = 0.0f;
+            }
+            *reinterpret_cast<uint16_t*>(dummy + 0x1BCE) = 0;
+            *reinterpret_cast<uint16_t*>(dummy + 0x17A2) = 0;
+            placed++;
         }
     }
 
@@ -332,9 +345,11 @@ void void_menu_kill_dummy() {
         }
 
         *reinterpret_cast<uint16_t*>(e + 0x1BCE) = 0; // set HP to 0
-        *reinterpret_cast<uint16_t*>(e + 0x17A2) = 0xFFFF; // mark defeated
-        for (uintptr_t offset : {uintptr_t{0x1AC0}, uintptr_t{0x1E0}, uintptr_t{0x170}}) {
-            *reinterpret_cast<float*>(e + offset + 4) = -5000.0f;
+        *reinterpret_cast<uint16_t*>(e + 0x17A2) = 0; // mark defeated
+        for (uintptr_t offset : {uintptr_t{0x1AC0 + 0x10}, uintptr_t{0x1E0 + 0x10}}) {
+            *reinterpret_cast<float*>(e + offset) = 0.0f;
+            *reinterpret_cast<float*>(e + offset + 4) = 0.0f;
+            *reinterpret_cast<float*>(e + offset + 8) = 0.0f;
         }
     }
     mod_log("the_void_menu: dummy despawned / killed");
