@@ -99,33 +99,17 @@ void void_reset_player() {
 uintptr_t void_get_subtable_for_type(DummyType type) {
     uintptr_t base = mod_base();
     if (!base) return 0;
-    switch (type) {
-        case DummyType::MarionetteBlade:
-        case DummyType::MarionetteShotgun:
-            return base + 0x519500; // Room 0 (rr100_2 Marionettes)
-        case DummyType::SinScissors:
-            return base + 0x517380; // Room 4 (rr106_2 Sin Scissors)
-        case DummyType::SinScythe:
-            return base + 0x512060; // Room 9 (rr10c_1 Sin Scythe)
-        case DummyType::Shadow:
-            return base + 0x51A540; // Room 26 (rr201_3 Shadow)
-        case DummyType::Frost:
-            return base + 0x518DA0; // Room 20 (rr11b_2 Frost)
-        case DummyType::Blade:
-            return base + 0x511160; // Room 22 (rr11d_1 Blade)
-        case DummyType::Nobody:
-            return base + 0x5193D0; // Room 6 (rr109_2 Nobody)
-        default:
-            return base + 0x519500;
-    }
+    // Room 31 native subtable (0x5116E0) provides rr206_1 which safely instantiates Blade enemies in r206.fsd chamber
+    return base + 0x5116E0;
 }
 
 void void_apply_dummy_subtable(DummyType type) {
     uintptr_t base = mod_base();
     if (!base) return;
     auto* entry22 = reinterpret_cast<uint8_t*>(base + kRoomTableEntry22Rva);
-    if (!entry22) return;
-    uintptr_t sub_tbl = void_get_subtable_for_type(type);
+    const auto* entry31 = reinterpret_cast<const uint8_t*>(base + kRoomTableEntry31Rva);
+    if (!entry22 || !entry31) return;
+    uintptr_t sub_tbl = *reinterpret_cast<const uint64_t*>(entry31 + 16);
     DWORD old_prot = 0;
     if (VirtualProtect(entry22 + 16, sizeof(uint64_t), PAGE_EXECUTE_READWRITE, &old_prot)) {
         *reinterpret_cast<uint64_t*>(entry22 + 16) = sub_tbl;
@@ -151,14 +135,10 @@ void void_patch_room_tables(bool enable) {
                     std::memcpy(g_saved_room_entry_22, entry22, 24);
                     g_room_entry_saved = true;
                 }
-                // Use r206.fsd room geometry & collision archive list from entry31
-                *reinterpret_cast<uint64_t*>(entry22 + 0) = *reinterpret_cast<const uint64_t*>(entry31 + 0);
-                *reinterpret_cast<uint32_t*>(entry22 + 8) = *reinterpret_cast<const uint32_t*>(entry31 + 8);
-                *reinterpret_cast<uint32_t*>(entry22 + 12) = 0;
-                // Hook enemy spawn subtable to actively spawn the dummy
-                uintptr_t sub_tbl = void_get_subtable_for_type(g_void_settings.dummy_type);
-                *reinterpret_cast<uint64_t*>(entry22 + 16) = sub_tbl;
-                mod_log("the_void: patched Room Table Entry 22 (files=r206.fsd, subtable=%p)", reinterpret_cast<void*>(sub_tbl));
+                // Copy authentic Room 31 descriptor (r206.fsd geometry + r207.fsd Blade subtable)
+                std::memcpy(entry22, entry31, 24);
+                mod_log("the_void: patched Room Table Entry 22 with Entry 31 descriptor (files=r206.fsd, subtable=%p)",
+                        reinterpret_cast<void*>(*reinterpret_cast<uint64_t*>(entry22 + 16)));
             } else if (g_room_entry_saved) {
                 std::memcpy(entry22, g_saved_room_entry_22, 24);
                 mod_log("the_void: restored Room Table Entry 22");
@@ -412,6 +392,13 @@ void void_update_frame() {
                 if (!e || e == player) continue;
                 auto ptr_val = reinterpret_cast<uintptr_t>(e);
                 if (ptr_val < 0x10000 || ptr_val > 0x7FFFFFFFFFFFull || (ptr_val & 7) != 0) continue;
+
+                MEMORY_BASIC_INFORMATION mbi{};
+                if (VirtualQuery(e, &mbi, sizeof(mbi)) != sizeof(mbi) ||
+                    mbi.State != MEM_COMMIT ||
+                    (mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD))) {
+                    continue;
+                }
 
                 if (i >= max_dummies) {
                     // Suppress extra dummy beyond selected count

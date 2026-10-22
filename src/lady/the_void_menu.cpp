@@ -208,21 +208,8 @@ void void_menu_reset_dummy() {
     int32_t count = *reinterpret_cast<int32_t*>(base + 0x4CB6BA0);
     auto** enemy_list = reinterpret_cast<uint8_t**>(base + 0x4CB6BB0);
 
-    // If no enemies spawned in the room yet, call the room enemy spawner to instantiate them!
     if (count <= 0 || !enemy_list) {
-        void_apply_dummy_subtable(g_void_settings.dummy_type);
-        using SpawnFn = void(__fastcall*)(void*);
-        auto spawn_fn = reinterpret_cast<SpawnFn>(base + 0x244700);
-        if (spawn_fn) {
-            static float s_matrix[16] = {0,0,0,1, 0,0,0,1, 0,0,0,1, 0,0,0,1};
-            spawn_fn(s_matrix);
-            count = *reinterpret_cast<int32_t*>(base + 0x4CB6BA0);
-            enemy_list = reinterpret_cast<uint8_t**>(base + 0x4CB6BB0);
-        }
-    }
-
-    if (count <= 0 || !enemy_list) {
-        mod_log("the_void_menu: reset_dummy failed: count=%d", count);
+        mod_log("the_void_menu: reset_dummy: no active enemies in room (count=%d)", count);
         return;
     }
 
@@ -246,6 +233,13 @@ void void_menu_reset_dummy() {
         if (!dummy || dummy == player) continue;
         auto ptr_val = reinterpret_cast<uintptr_t>(dummy);
         if (ptr_val < 0x10000 || ptr_val > 0x7FFFFFFFFFFFull || (ptr_val & 7) != 0) continue;
+
+        MEMORY_BASIC_INFORMATION mbi{};
+        if (VirtualQuery(dummy, &mbi, sizeof(mbi)) != sizeof(mbi) ||
+            mbi.State != MEM_COMMIT ||
+            (mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD))) {
+            continue;
+        }
 
         float off = x_offsets[placed];
         float dummy_x = px + forward_x * 240.0f + right_x * off;
@@ -290,6 +284,16 @@ void void_menu_kill_dummy() {
     for (int i = 0; i < count; ++i) {
         uint8_t* e = enemy_list[i];
         if (!e) continue;
+        auto ptr_val = reinterpret_cast<uintptr_t>(e);
+        if (ptr_val < 0x10000 || ptr_val > 0x7FFFFFFFFFFFull || (ptr_val & 7) != 0) continue;
+
+        MEMORY_BASIC_INFORMATION mbi{};
+        if (VirtualQuery(e, &mbi, sizeof(mbi)) != sizeof(mbi) ||
+            mbi.State != MEM_COMMIT ||
+            (mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD))) {
+            continue;
+        }
+
         *reinterpret_cast<uint16_t*>(e + 0x1BCE) = 0; // set HP to 0
         *reinterpret_cast<uint16_t*>(e + 0x17A2) = 0xFFFF; // mark defeated
     }

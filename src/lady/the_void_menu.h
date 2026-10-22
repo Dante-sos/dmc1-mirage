@@ -48,7 +48,7 @@ struct VoidSettings {
 
     // Configurations
     int dummy_count = 1; // 1 to 3 simultaneous training dummies
-    DummyType dummy_type = DummyType::MarionetteBlade;
+    DummyType dummy_type = DummyType::Blade;
     DummyAiMode dummy_ai = DummyAiMode::StandStill;
     bool immortal_dummy = true;
     bool infinite_juggle = true; // floatier air physics / extended aerial combo juggle
