@@ -28,6 +28,28 @@ float g_mouse_x = 0.0f;
 float g_mouse_y = 0.0f;
 bool g_mouse_down = false;
 std::atomic<bool> g_mouse_clicked{false};
+float g_cached_render_w = 1920.0f;
+float g_cached_render_h = 1080.0f;
+
+void update_mouse_coords(HWND hwnd, float render_w = 0.0f, float render_h = 0.0f) {
+    if (!hwnd) hwnd = g_game_hwnd;
+    if (render_w > 0.0f) g_cached_render_w = render_w;
+    if (render_h > 0.0f) g_cached_render_h = render_h;
+    POINT pt;
+    if (GetCursorPos(&pt) && hwnd) {
+        ScreenToClient(hwnd, &pt);
+        RECT cr{};
+        if (GetClientRect(hwnd, &cr) && (cr.right > cr.left) && (cr.bottom > cr.top) && g_cached_render_w > 0.0f && g_cached_render_h > 0.0f) {
+            float client_w = static_cast<float>(cr.right - cr.left);
+            float client_h = static_cast<float>(cr.bottom - cr.top);
+            g_mouse_x = static_cast<float>(pt.x) * (g_cached_render_w / client_w);
+            g_mouse_y = static_cast<float>(pt.y) * (g_cached_render_h / client_h);
+        } else {
+            g_mouse_x = static_cast<float>(pt.x);
+            g_mouse_y = static_cast<float>(pt.y);
+        }
+    }
+}
 
 constexpr float kScale = 0.56f;
 constexpr float kSmallScale = 0.44f;
@@ -122,56 +144,24 @@ bool void_menu_on_wndproc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
         }
 
         case WM_MOUSEMOVE: {
-            g_mouse_x = static_cast<float>(GET_X_LPARAM(lparam));
-            g_mouse_y = static_cast<float>(GET_Y_LPARAM(lparam));
-
+            update_mouse_coords(hwnd);
             if (!g_void_settings.window_open) break;
 
-            // Handle window dragging
-            if (g_void_settings.dragging) {
-                g_void_settings.win_x = g_mouse_x - g_void_settings.drag_off_x;
-                g_void_settings.win_y = g_mouse_y - g_void_settings.drag_off_y;
-                return true;
-            }
-
-            // Handle slider dragging
-            if (g_void_settings.active_slider == 1) { // Dummy Max HP
-                float slider_x = g_void_settings.win_x + 20.0f;
-                float slider_w = g_void_settings.win_w - 40.0f;
-                float frac = std::clamp((g_mouse_x - slider_x) / slider_w, 0.0f, 1.0f);
-                g_void_settings.dummy_hp = std::round((1000.0f + frac * 9000.0f) / 250.0f) * 250.0f;
-                return true;
-            } else if (g_void_settings.active_slider == 2) { // Damage Multiplier
-                float slider_x = g_void_settings.win_x + 20.0f;
-                float slider_w = g_void_settings.win_w - 40.0f;
-                float frac = std::clamp((g_mouse_x - slider_x) / slider_w, 0.0f, 1.0f);
-                g_void_settings.damage_mult = std::round((0.5f + frac * 2.5f) * 10.0f) / 10.0f;
-                return true;
-            }
-
-            // If mouse over window or open dropdown, consume
-            if (in_rect(g_mouse_x, g_mouse_y, g_void_settings.win_x, g_void_settings.win_y, g_void_settings.win_w, g_void_settings.win_h + (g_void_settings.open_dropdown ? 150.0f : 0.0f))) {
+            float extra_h = (g_void_settings.open_dropdown ? 220.0f : 0.0f);
+            if (in_rect(g_mouse_x, g_mouse_y, g_void_settings.win_x, g_void_settings.win_y, g_void_settings.win_w, g_void_settings.win_h + extra_h)) {
                 return true;
             }
             break;
         }
 
-        case WM_LBUTTONDOWN: {
+        case WM_LBUTTONDOWN:
+        case WM_LBUTTONDBLCLK: {
             if (!g_void_settings.window_open) break;
 
-            POINT pt;
-            if (GetCursorPos(&pt) && hwnd) {
-                ScreenToClient(hwnd, &pt);
-                g_mouse_x = static_cast<float>(pt.x);
-                g_mouse_y = static_cast<float>(pt.y);
-            } else {
-                g_mouse_x = static_cast<float>(GET_X_LPARAM(lparam));
-                g_mouse_y = static_cast<float>(GET_Y_LPARAM(lparam));
-            }
+            update_mouse_coords(hwnd);
             g_mouse_down = true;
             g_mouse_clicked.store(true);
 
-            // Check if clicking inside window
             float extra_h = (g_void_settings.open_dropdown ? 220.0f : 0.0f);
             if (in_rect(g_mouse_x, g_mouse_y, g_void_settings.win_x, g_void_settings.win_y, g_void_settings.win_w, g_void_settings.win_h + extra_h)) {
                 return true; // block attack from registering in game!
@@ -182,11 +172,13 @@ bool void_menu_on_wndproc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
         case WM_LBUTTONUP: {
             if (!g_void_settings.window_open) break;
 
+            update_mouse_coords(hwnd);
             g_mouse_down = false;
             g_void_settings.dragging = false;
             g_void_settings.active_slider = 0;
 
-            if (in_rect(g_mouse_x, g_mouse_y, g_void_settings.win_x, g_void_settings.win_y, g_void_settings.win_w, g_void_settings.win_h)) {
+            float extra_h = (g_void_settings.open_dropdown ? 220.0f : 0.0f);
+            if (in_rect(g_mouse_x, g_mouse_y, g_void_settings.win_x, g_void_settings.win_y, g_void_settings.win_w, g_void_settings.win_h + extra_h)) {
                 return true;
             }
             break;
@@ -366,42 +358,9 @@ void void_menu_update() {
         s_prev_2 = key_2;
     }
 
-    // 2. Mouse position & drag tracking (event-driven clicks via WndProc)
+    // 2. Mouse position tracking
     if (g_void_settings.window_open) {
-        POINT pt;
-        if (GetCursorPos(&pt)) {
-            if (g_game_hwnd) {
-                ScreenToClient(g_game_hwnd, &pt);
-            }
-            g_mouse_x = static_cast<float>(pt.x);
-            g_mouse_y = static_cast<float>(pt.y);
-        }
-
-        bool lbutton = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
-        if (!lbutton) {
-            g_mouse_down = false;
-            g_void_settings.dragging = false;
-            g_void_settings.active_slider = 0;
-        }
-
-        // Handle window dragging
-        if (g_void_settings.dragging) {
-            g_void_settings.win_x = g_mouse_x - g_void_settings.drag_off_x;
-            g_void_settings.win_y = g_mouse_y - g_void_settings.drag_off_y;
-        }
-
-        // Handle slider dragging
-        if (g_void_settings.active_slider == 1) { // Dummy Max HP
-            float slider_x = g_void_settings.win_x + 20.0f;
-            float slider_w = g_void_settings.win_w - 40.0f;
-            float frac = std::clamp((g_mouse_x - slider_x) / slider_w, 0.0f, 1.0f);
-            g_void_settings.dummy_hp = std::round((1000.0f + frac * 9000.0f) / 250.0f) * 250.0f;
-        } else if (g_void_settings.active_slider == 2) { // Damage Multiplier
-            float slider_x = g_void_settings.win_x + 20.0f;
-            float slider_w = g_void_settings.win_w - 40.0f;
-            float frac = std::clamp((g_mouse_x - slider_x) / slider_w, 0.0f, 1.0f);
-            g_void_settings.damage_mult = std::round((0.5f + frac * 2.5f) * 10.0f) / 10.0f;
-        }
+        update_mouse_coords(g_game_hwnd);
     }
 
     // 3. Check combo expiration
@@ -459,18 +418,34 @@ void void_menu_render(std::vector<Vertex>& verts, float screen_w, float screen_h
     // 2. Render REFramework-Style Floating Transparent Window
     if (!g_void_settings.window_open) return;
 
-    POINT cursor_pt;
-    if (GetCursorPos(&cursor_pt) && g_game_hwnd) {
-        ScreenToClient(g_game_hwnd, &cursor_pt);
-        g_mouse_x = static_cast<float>(cursor_pt.x);
-        g_mouse_y = static_cast<float>(cursor_pt.y);
+    update_mouse_coords(g_game_hwnd, screen_w, screen_h);
+
+    // 1. Dual-source click registration (WndProc event + hardware async edge detection)
+    bool wnd_clicked = g_mouse_clicked.exchange(false);
+    bool lbutton_state = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
+    static bool s_prev_lbutton = false;
+    bool async_clicked = lbutton_state && !s_prev_lbutton;
+    s_prev_lbutton = lbutton_state;
+
+    bool clicked = wnd_clicked || async_clicked;
+
+    // Reset mouse down / active slider / drag when physical button is released
+    if (!lbutton_state) {
+        g_mouse_down = false;
+        g_void_settings.dragging = false;
+        g_void_settings.active_slider = 0;
     }
-    bool clicked = g_mouse_clicked.exchange(false);
 
     float wx = g_void_settings.win_x;
     float wy = g_void_settings.win_y;
     float ww = g_void_settings.win_w;
     float wh = g_void_settings.win_h;
+
+    // Handle Title Bar Dragging
+    if (g_void_settings.dragging && lbutton_state) {
+        wx = g_mouse_x - g_void_settings.drag_off_x;
+        wy = g_mouse_y - g_void_settings.drag_off_y;
+    }
 
     // Clamp window to screen bounds
     wx = std::clamp(wx, 5.0f, screen_w - ww - 5.0f);
@@ -494,13 +469,6 @@ void void_menu_render(std::vector<Vertex>& verts, float screen_w, float screen_h
     draw_rect(verts, wx, wy, ww, 2.0f, 1.0f, 1.0f, 1.0f, 0.95f);
     draw_text_outlined(verts, wx + 16.0f, wy + 8.0f, "THE VOID // TRAINING CONFIG", kScale, 0.4f, 1.0f, 1.0f, 1.0f, 1.0f);
 
-    // Handle Title Bar Drag
-    if (header_hover && clicked) {
-        g_void_settings.dragging = true;
-        g_void_settings.drag_off_x = g_mouse_x - wx;
-        g_void_settings.drag_off_y = g_mouse_y - wy;
-    }
-
     // Close Button [X]
     float close_w = 26.0f;
     float close_h = 26.0f;
@@ -518,10 +486,59 @@ void void_menu_render(std::vector<Vertex>& verts, float screen_w, float screen_h
         return;
     }
 
-    // Window Content Layout Cursor
-    float cur_y = wy + header_h + 16.0f;
+    // Handle Title Bar Drag start
+    if (header_hover && clicked) {
+        g_void_settings.dragging = true;
+        g_void_settings.drag_off_x = g_mouse_x - wx;
+        g_void_settings.drag_off_y = g_mouse_y - wy;
+        clicked = false;
+    }
+
+    // Window Content Layout Geometry
     float pad_x = wx + 20.0f;
     float content_w = ww - 40.0f;
+
+    float dd1_y = wy + 148.0f;
+    float pop1_y = dd1_y + 30.0f;
+    float pop1_h = static_cast<float>(static_cast<int>(DummyType::Count)) * 26.0f;
+    bool in_pop1 = in_rect(g_mouse_x, g_mouse_y, pad_x, pop1_y, content_w, pop1_h);
+    bool dd1_hover = in_rect(g_mouse_x, g_mouse_y, pad_x, dd1_y, content_w, 30.0f);
+
+    float dd2_y = wy + 226.0f;
+    float pop2_y = dd2_y + 30.0f;
+    float pop2_h = 3.0f * 26.0f;
+    bool in_pop2 = in_rect(g_mouse_x, g_mouse_y, pad_x, pop2_y, content_w, pop2_h);
+    bool dd2_hover = in_rect(g_mouse_x, g_mouse_y, pad_x, dd2_y, content_w, 30.0f);
+
+    // MODAL DROPDOWN CLICK INTERCEPTION (blocks clicks from penetrating to underlying widgets)
+    if (g_void_settings.open_dropdown == 1) {
+        if (clicked) {
+            if (in_pop1) {
+                int item = static_cast<int>((g_mouse_y - pop1_y) / 26.0f);
+                if (item >= 0 && item < static_cast<int>(DummyType::Count)) {
+                    g_void_settings.dummy_type = static_cast<DummyType>(item);
+                    void_apply_dummy_subtable(g_void_settings.dummy_type);
+                    void_menu_reset_dummy();
+                }
+            }
+            g_void_settings.open_dropdown = 0;
+            clicked = false;
+        }
+    } else if (g_void_settings.open_dropdown == 2) {
+        if (clicked) {
+            if (in_pop2) {
+                int item = static_cast<int>((g_mouse_y - pop2_y) / 26.0f);
+                if (item >= 0 && item < 3) {
+                    g_void_settings.dummy_ai = static_cast<DummyAiMode>(item);
+                }
+            }
+            g_void_settings.open_dropdown = 0;
+            clicked = false;
+        }
+    }
+
+    // Window Content Layout Cursor
+    float cur_y = wy + header_h + 16.0f;
 
     // SECTION 1: TRAINING DUMMY
     draw_text(verts, pad_x, cur_y, "TRAINING DUMMY", kScale, 0.5f, 1.0f, 1.0f, 1.0f, 1.0f);
@@ -545,6 +562,7 @@ void void_menu_render(std::vector<Vertex>& verts, float screen_w, float screen_h
     if (minus_hover && clicked && g_void_settings.dummy_count > 1) {
         g_void_settings.dummy_count--;
         void_menu_reset_dummy();
+        clicked = false;
     }
 
     char count_str[16] = {};
@@ -568,14 +586,13 @@ void void_menu_render(std::vector<Vertex>& verts, float screen_w, float screen_h
     if (plus_hover && clicked && g_void_settings.dummy_count < 3) {
         g_void_settings.dummy_count++;
         void_menu_reset_dummy();
+        clicked = false;
     }
     cur_y += 34.0f;
 
     // Dropdown 1: Dummy Type
     draw_text(verts, pad_x, cur_y, "Dummy Enemy Type:", kSmallScale, 0.3f, 0.85f, 0.85f, 0.85f, 1.0f);
     cur_y += 20.0f;
-    float dd1_y = cur_y;
-    bool dd1_hover = in_rect(g_mouse_x, g_mouse_y, pad_x, dd1_y, content_w, 30.0f);
     draw_rect(verts, pad_x, dd1_y, content_w, 30.0f, 0.10f, 0.10f, 0.10f, 0.65f);
     draw_rect(verts, pad_x, dd1_y, content_w, 1.0f, 1.0f, 1.0f, 1.0f, dd1_hover ? 0.85f : 0.40f);
     draw_rect(verts, pad_x, dd1_y + 29.0f, content_w, 1.0f, 1.0f, 1.0f, 1.0f, dd1_hover ? 0.85f : 0.40f);
@@ -584,15 +601,14 @@ void void_menu_render(std::vector<Vertex>& verts, float screen_w, float screen_h
     draw_text(verts, pad_x + 10.0f, dd1_y + 5.0f, kDummyNames[static_cast<int>(g_void_settings.dummy_type)], kSmallScale, 0.3f, 1.0f, 1.0f, 1.0f, 1.0f);
     draw_text(verts, pad_x + content_w - 20.0f, dd1_y + 5.0f, "v", kSmallScale, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f);
     if (dd1_hover && clicked) {
-        g_void_settings.open_dropdown = (g_void_settings.open_dropdown == 1) ? 0 : 1;
+        g_void_settings.open_dropdown = 1;
+        clicked = false;
     }
     cur_y += 38.0f;
 
     // Dropdown 2: AI Behavior
     draw_text(verts, pad_x, cur_y, "Dummy AI Behavior:", kSmallScale, 0.3f, 0.85f, 0.85f, 0.85f, 1.0f);
     cur_y += 20.0f;
-    float dd2_y = cur_y;
-    bool dd2_hover = in_rect(g_mouse_x, g_mouse_y, pad_x, dd2_y, content_w, 30.0f);
     draw_rect(verts, pad_x, dd2_y, content_w, 30.0f, 0.10f, 0.10f, 0.10f, 0.65f);
     draw_rect(verts, pad_x, dd2_y, content_w, 1.0f, 1.0f, 1.0f, 1.0f, dd2_hover ? 0.85f : 0.40f);
     draw_rect(verts, pad_x, dd2_y + 29.0f, content_w, 1.0f, 1.0f, 1.0f, 1.0f, dd2_hover ? 0.85f : 0.40f);
@@ -601,7 +617,8 @@ void void_menu_render(std::vector<Vertex>& verts, float screen_w, float screen_h
     draw_text(verts, pad_x + 10.0f, dd2_y + 5.0f, kAiNames[static_cast<int>(g_void_settings.dummy_ai)], kSmallScale, 0.3f, 1.0f, 1.0f, 1.0f, 1.0f);
     draw_text(verts, pad_x + content_w - 20.0f, dd2_y + 5.0f, "v", kSmallScale, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f);
     if (dd2_hover && clicked) {
-        g_void_settings.open_dropdown = (g_void_settings.open_dropdown == 2) ? 0 : 2;
+        g_void_settings.open_dropdown = 2;
+        clicked = false;
     }
     cur_y += 38.0f;
 
@@ -619,8 +636,16 @@ void void_menu_render(std::vector<Vertex>& verts, float screen_w, float screen_h
     draw_rect(verts, pad_x + content_w * hp_frac - 5.0f, s1_y, 10.0f, 16.0f, 1.0f, 1.0f, 1.0f, 1.0f);
     draw_rect(verts, pad_x + content_w * hp_frac - 5.0f, s1_y, 10.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.8f);
     draw_rect(verts, pad_x + content_w * hp_frac - 5.0f, s1_y + 15.0f, 10.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.8f);
-    if (in_rect(g_mouse_x, g_mouse_y, pad_x - 5.0f, s1_y - 2.0f, content_w + 10.0f, 20.0f) && clicked) {
+    bool s1_hover = in_rect(g_mouse_x, g_mouse_y, pad_x - 5.0f, s1_y - 2.0f, content_w + 10.0f, 20.0f);
+    if (s1_hover && clicked) {
         g_void_settings.active_slider = 1;
+        float frac = std::clamp((g_mouse_x - pad_x) / content_w, 0.0f, 1.0f);
+        g_void_settings.dummy_hp = std::round((1000.0f + frac * 9000.0f) / 250.0f) * 250.0f;
+        clicked = false;
+    }
+    if (g_void_settings.active_slider == 1 && lbutton_state) {
+        float frac = std::clamp((g_mouse_x - pad_x) / content_w, 0.0f, 1.0f);
+        g_void_settings.dummy_hp = std::round((1000.0f + frac * 9000.0f) / 250.0f) * 250.0f;
     }
     cur_y += 28.0f;
 
@@ -638,6 +663,7 @@ void void_menu_render(std::vector<Vertex>& verts, float screen_w, float screen_h
         draw_text(verts, x + 30.0f, y + 2.0f, label, kSmallScale, 0.3f, 0.90f, 0.90f, 0.90f, 1.0f);
         if (hover && clicked) {
             val = !val;
+            clicked = false;
         }
     };
 
@@ -659,6 +685,7 @@ void void_menu_render(std::vector<Vertex>& verts, float screen_w, float screen_h
         draw_text(verts, x + (content_w - tw) * 0.5f, y + 6.0f, label, kSmallScale, 0.3f, 1.0f, 1.0f, 1.0f, 1.0f);
         if (hover && clicked) {
             on_click();
+            clicked = false;
         }
     };
 
@@ -692,6 +719,7 @@ void void_menu_render(std::vector<Vertex>& verts, float screen_w, float screen_h
     draw_text(verts, pad_x + (half_btn_w - w1_tw) * 0.5f, cur_y + 5.0f, "Cycle Melee [1]", kSmallScale, 0.2f, 1.0f, 1.0f, 1.0f, 1.0f);
     if (w1_hover && clicked) {
         mod_switch_melee();
+        clicked = false;
     }
 
     float w2_x = pad_x + half_btn_w + 12.0f;
@@ -706,6 +734,7 @@ void void_menu_render(std::vector<Vertex>& verts, float screen_w, float screen_h
     draw_text(verts, w2_x + (half_btn_w - w2_tw) * 0.5f, cur_y + 5.0f, "Cycle Gun [2]", kSmallScale, 0.2f, 1.0f, 1.0f, 1.0f, 1.0f);
     if (w2_hover && clicked) {
         mod_switch_ranged();
+        clicked = false;
     }
     cur_y += 36.0f;
 
@@ -723,66 +752,52 @@ void void_menu_render(std::vector<Vertex>& verts, float screen_w, float screen_h
     draw_rect(verts, pad_x + content_w * dmg_frac - 5.0f, s2_y, 10.0f, 16.0f, 1.0f, 1.0f, 1.0f, 1.0f);
     draw_rect(verts, pad_x + content_w * dmg_frac - 5.0f, s2_y, 10.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.8f);
     draw_rect(verts, pad_x + content_w * dmg_frac - 5.0f, s2_y + 15.0f, 10.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.8f);
-    if (in_rect(g_mouse_x, g_mouse_y, pad_x - 5.0f, s2_y - 2.0f, content_w + 10.0f, 20.0f) && clicked) {
+    bool s2_hover = in_rect(g_mouse_x, g_mouse_y, pad_x - 5.0f, s2_y - 2.0f, content_w + 10.0f, 20.0f);
+    if (s2_hover && clicked) {
         g_void_settings.active_slider = 2;
+        float frac = std::clamp((g_mouse_x - pad_x) / content_w, 0.0f, 1.0f);
+        g_void_settings.damage_mult = std::round((0.5f + frac * 2.5f) * 10.0f) / 10.0f;
+        clicked = false;
+    }
+    if (g_void_settings.active_slider == 2 && lbutton_state) {
+        float frac = std::clamp((g_mouse_x - pad_x) / content_w, 0.0f, 1.0f);
+        g_void_settings.damage_mult = std::round((0.5f + frac * 2.5f) * 10.0f) / 10.0f;
     }
     cur_y += 32.0f;
 
     // Footer Hint
     draw_text(verts, pad_x, wy + wh - 22.0f, "Press [INSERT] or [F1] to toggle menu", kSmallScale * 0.9f, 0.2f, 0.65f, 0.65f, 0.65f, 0.90f);
 
-    // 3. RENDER OPEN DROPDOWN POPUPS ON TOP (so they overlap any widgets underneath)
+    // 3. RENDER OPEN DROPDOWN POPUPS ON TOP (so they visually overlap any widgets underneath)
     if (g_void_settings.open_dropdown == 1) { // Dummy Type Dropdown Popup
-        float pop_y = dd1_y + 30.0f;
-        float pop_h = static_cast<float>(static_cast<int>(DummyType::Count)) * 26.0f;
-        bool in_pop1 = in_rect(g_mouse_x, g_mouse_y, pad_x, pop_y, content_w, pop_h);
-        draw_rect(verts, pad_x, pop_y, content_w, pop_h, 0.06f, 0.06f, 0.06f, 0.92f);
-        draw_rect(verts, pad_x, pop_y, content_w, 1.0f, 1.0f, 1.0f, 1.0f, 0.70f);
-        draw_rect(verts, pad_x, pop_y + pop_h - 1.0f, content_w, 1.0f, 1.0f, 1.0f, 1.0f, 0.70f);
-        draw_rect(verts, pad_x, pop_y, 1.0f, pop_h, 1.0f, 1.0f, 1.0f, 0.70f);
-        draw_rect(verts, pad_x + content_w - 1.0f, pop_y, 1.0f, pop_h, 1.0f, 1.0f, 1.0f, 0.70f);
+        draw_rect(verts, pad_x, pop1_y, content_w, pop1_h, 0.06f, 0.06f, 0.06f, 0.96f);
+        draw_rect(verts, pad_x, pop1_y, content_w, 1.0f, 1.0f, 1.0f, 1.0f, 0.70f);
+        draw_rect(verts, pad_x, pop1_y + pop1_h - 1.0f, content_w, 1.0f, 1.0f, 1.0f, 1.0f, 0.70f);
+        draw_rect(verts, pad_x, pop1_y, 1.0f, pop1_h, 1.0f, 1.0f, 1.0f, 0.70f);
+        draw_rect(verts, pad_x + content_w - 1.0f, pop1_y, 1.0f, pop1_h, 1.0f, 1.0f, 1.0f, 0.70f);
         for (int i = 0; i < static_cast<int>(DummyType::Count); ++i) {
-            float item_y = pop_y + i * 26.0f;
+            float item_y = pop1_y + i * 26.0f;
             bool hover = in_rect(g_mouse_x, g_mouse_y, pad_x, item_y, content_w, 26.0f);
             if (hover) {
-                draw_rect(verts, pad_x, item_y, content_w, 26.0f, 0.22f, 0.22f, 0.22f, 0.95f);
-                if (clicked) {
-                    g_void_settings.dummy_type = static_cast<DummyType>(i);
-                    void_apply_dummy_subtable(g_void_settings.dummy_type);
-                    void_menu_reset_dummy();
-                    g_void_settings.open_dropdown = 0;
-                }
+                draw_rect(verts, pad_x, item_y, content_w, 26.0f, 0.25f, 0.25f, 0.25f, 0.96f);
             }
             float col = (g_void_settings.dummy_type == static_cast<DummyType>(i)) ? 1.00f : 0.75f;
             draw_text(verts, pad_x + 10.0f, item_y + 5.0f, kDummyNames[i], kSmallScale, 0.3f, col, col, col, 1.0f);
         }
-        if (!in_pop1 && !dd1_hover && clicked) {
-            g_void_settings.open_dropdown = 0;
-        }
     } else if (g_void_settings.open_dropdown == 2) { // AI Behavior Dropdown Popup
-        float pop_y = dd2_y + 30.0f;
-        float pop_h = 3 * 26.0f;
-        bool in_pop2 = in_rect(g_mouse_x, g_mouse_y, pad_x, pop_y, content_w, pop_h);
-        draw_rect(verts, pad_x, pop_y, content_w, pop_h, 0.06f, 0.06f, 0.06f, 0.92f);
-        draw_rect(verts, pad_x, pop_y, content_w, 1.0f, 1.0f, 1.0f, 1.0f, 0.70f);
-        draw_rect(verts, pad_x, pop_y + pop_h - 1.0f, content_w, 1.0f, 1.0f, 1.0f, 1.0f, 0.70f);
-        draw_rect(verts, pad_x, pop_y, 1.0f, pop_h, 1.0f, 1.0f, 1.0f, 0.70f);
-        draw_rect(verts, pad_x + content_w - 1.0f, pop_y, 1.0f, pop_h, 1.0f, 1.0f, 1.0f, 0.70f);
+        draw_rect(verts, pad_x, pop2_y, content_w, pop2_h, 0.06f, 0.06f, 0.06f, 0.96f);
+        draw_rect(verts, pad_x, pop2_y, content_w, 1.0f, 1.0f, 1.0f, 1.0f, 0.70f);
+        draw_rect(verts, pad_x, pop2_y + pop2_h - 1.0f, content_w, 1.0f, 1.0f, 1.0f, 1.0f, 0.70f);
+        draw_rect(verts, pad_x, pop2_y, 1.0f, pop2_h, 1.0f, 1.0f, 1.0f, 0.70f);
+        draw_rect(verts, pad_x + content_w - 1.0f, pop2_y, 1.0f, pop2_h, 1.0f, 1.0f, 1.0f, 0.70f);
         for (int i = 0; i < 3; ++i) {
-            float item_y = pop_y + i * 26.0f;
+            float item_y = pop2_y + i * 26.0f;
             bool hover = in_rect(g_mouse_x, g_mouse_y, pad_x, item_y, content_w, 26.0f);
             if (hover) {
-                draw_rect(verts, pad_x, item_y, content_w, 26.0f, 0.22f, 0.22f, 0.22f, 0.95f);
-                if (clicked) {
-                    g_void_settings.dummy_ai = static_cast<DummyAiMode>(i);
-                    g_void_settings.open_dropdown = 0;
-                }
+                draw_rect(verts, pad_x, item_y, content_w, 26.0f, 0.25f, 0.25f, 0.25f, 0.96f);
             }
             float col = (g_void_settings.dummy_ai == static_cast<DummyAiMode>(i)) ? 1.00f : 0.75f;
             draw_text(verts, pad_x + 10.0f, item_y + 5.0f, kAiNames[i], kSmallScale, 0.3f, col, col, col, 1.0f);
-        }
-        if (!in_pop2 && !dd2_hover && clicked) {
-            g_void_settings.open_dropdown = 0;
         }
     }
 
