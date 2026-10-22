@@ -544,6 +544,7 @@ void void_menu_render(std::vector<Vertex>& verts, float screen_w, float screen_h
     draw_text(verts, pad_x + 12.0f, cur_y + 3.0f, "-", kScale, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f);
     if (minus_hover && clicked && g_void_settings.dummy_count > 1) {
         g_void_settings.dummy_count--;
+        void_menu_reset_dummy();
     }
 
     char count_str[16] = {};
@@ -566,6 +567,7 @@ void void_menu_render(std::vector<Vertex>& verts, float screen_w, float screen_h
     draw_text(verts, plus_x + 11.0f, cur_y + 3.0f, "+", kScale, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f);
     if (plus_hover && clicked && g_void_settings.dummy_count < 3) {
         g_void_settings.dummy_count++;
+        void_menu_reset_dummy();
     }
     cur_y += 34.0f;
 
