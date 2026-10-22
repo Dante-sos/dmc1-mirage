@@ -1,6 +1,7 @@
 #include "mod.h"
 #include "style.h"
 #include "style_trickster.h"
+#include "the_void_menu.h"
 
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -13,6 +14,11 @@
 #include <cstdio>
 #include <cstring>
 #include <vector>
+
+constexpr int kCell = 40;
+constexpr int kCols = 16;
+constexpr int kAtlas = kCell * kCols;
+int g_glyph_w[95] = {};
 
 namespace {
 
@@ -47,9 +53,6 @@ constexpr int kModeValues[] = {2, 3, 5, 6};
 const char* kModeNames[] = {"Easy", "Normal", "Hard", "Dante Must Die"};
 
 constexpr WORD kMenuButtons = 0x0001 | 0x0002 | 0x0004 | 0x0008 | 0x1000 | 0x2000;
-constexpr int kCell = 40;
-constexpr int kCols = 16;
-constexpr int kAtlas = kCell * kCols;
 
 void log_line(const char* fmt, ...) {
     wchar_t path[MAX_PATH]{};
@@ -71,14 +74,9 @@ void log_line(const char* fmt, ...) {
     std::fclose(file);
 }
 
-struct Vertex {
-    float x, y, u, v, r, g, b, a;
-};
-
 std::atomic<WORD> g_buttons{0};
 int g_mission = 0;
 int g_mode = 1;
-int g_glyph_w[95] = {};
 
 enum class Screen { None, Launcher, Missions, BossRush, Settings, Title };
 Screen g_screen = Screen::Launcher;
@@ -563,6 +561,8 @@ void restore_state(ID3D11DeviceContext* context, DxState& state) {
     drop(state.dsv);
 }
 
+} // namespace
+
 void push_quad(std::vector<Vertex>& verts, float x, float y, float w, float h, float u0, float v0, float u1, float v1, float r, float g, float b, float a) {
     Vertex q[6] = {
         {x, y, u0, v0, r, g, b, a},
@@ -626,6 +626,8 @@ void draw_text_outlined(std::vector<Vertex>& verts, float x, float y, const char
     }
     draw_text(verts, x, y, text, scale, tracking, r, g, b, a);
 }
+
+namespace {
 
 void submit(std::vector<Vertex>& verts, float width, float height, float tex_mode, ID3D11ShaderResourceView* texture) {
     if (verts.empty() || !texture) {
@@ -1135,11 +1137,7 @@ void draw_style_hud(float width, float height) {
 
     if (mod_is_the_void()) {
         const char* void_title = "THE VOID  //  COMBO ARENA";
-        char void_sub[128] = "[F5 / SELECT] Reset Position  |  Infinite HP & DT";
-        char coord_buf[64] = {};
-        if (mod_format_coords(coord_buf, sizeof(coord_buf))) {
-            std::snprintf(void_sub, sizeof(void_sub), "[F5] Reset | %s", coord_buf);
-        }
+        const char* void_sub = "[INSERT / L3+R3] Training Menu  |  [SELECT / F5] Reset Dummy";
         float v_sc = scale * 0.38f;
         float v_sub_sc = scale * 0.30f;
         float v_track = 0.8f * scale;
@@ -1149,10 +1147,10 @@ void draw_style_hud(float width, float height) {
         float v_box_h = 36.0f * scale + pad_y * 2.0f;
         float v_y = y - v_box_h - 10.0f * scale;
 
-        draw_rect(verts, x, v_y, v_box_w, v_box_h, 0.03f, 0.02f, 0.04f, 0.78f);
-        draw_rect(verts, x, v_y, v_box_w, 2.0f * scale, 0.85f, 0.15f, 0.20f, 0.95f);
-        draw_text_outlined(verts, x + pad_x, v_y + pad_y, void_title, v_sc, v_track, 1.0f, 0.88f, 0.40f, 1.0f);
-        draw_text(verts, x + pad_x, v_y + pad_y + 18.0f * scale, void_sub, v_sub_sc, 0.4f * scale, 1.0f, 0.85f, 0.40f, 0.95f);
+        draw_rect(verts, x, v_y, v_box_w, v_box_h, 0.0f, 0.0f, 0.0f, 0.35f);
+        draw_rect(verts, x, v_y, v_box_w, 2.0f * scale, 1.0f, 1.0f, 1.0f, 0.90f);
+        draw_text_outlined(verts, x + pad_x, v_y + pad_y, void_title, v_sc, v_track, 1.0f, 1.0f, 1.0f, 1.0f);
+        draw_text(verts, x + pad_x, v_y + pad_y + 18.0f * scale, void_sub, v_sub_sc, 0.4f * scale, 0.90f, 0.90f, 0.90f, 0.95f);
     }
 
     submit(verts, width, height, 0.0f, g_font_view);
@@ -1169,8 +1167,18 @@ void draw_screen(float width, float height) {
         draw_settings_screen(width, height);
     } else if (g_screen == Screen::Title) {
         draw_launcher_menu(width, height);
-    } else if (mod_in_game() && g_setting_hud_enabled) {
-        draw_style_hud(width, height);
+    } else if (mod_in_game()) {
+        if (g_setting_hud_enabled) {
+            draw_style_hud(width, height);
+        }
+        if (mod_is_the_void()) {
+            std::vector<Vertex> verts;
+            verts.reserve(512);
+            void_menu_render(verts, width, height);
+            if (!verts.empty()) {
+                submit(verts, width, height, 0.0f, g_font_view);
+            }
+        }
     }
 }
 
@@ -1829,6 +1837,7 @@ void hook_swap_chain(IDXGISwapChain* swap) {
     DXGI_SWAP_CHAIN_DESC desc{};
     if (SUCCEEDED(swap->GetDesc(&desc))) {
         log_line("present hook installed %ux%u effect %u", desc.BufferDesc.Width, desc.BufferDesc.Height, desc.SwapEffect);
+        void_menu_init(desc.OutputWindow);
     } else {
         log_line("present hook installed");
     }
