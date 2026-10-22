@@ -267,7 +267,7 @@ void void_menu_reset_dummy() {
         *reinterpret_cast<float*>(dummy + 0x124) = dummy_yaw;
 
         // Zero momentum
-        for (uintptr_t offset : {uintptr_t{0x1AC0 + 0x10}, uintptr_t{0x1E0 + 0x10}}) {
+        for (uintptr_t offset : {uintptr_t{0x1AC0 + 0x10}, uintptr_t{0x1E0 + 0x10}, uintptr_t{0x170 + 0x10}}) {
             *reinterpret_cast<float*>(dummy + offset) = 0.0f;
             *reinterpret_cast<float*>(dummy + offset + 4) = 0.0f;
             *reinterpret_cast<float*>(dummy + offset + 8) = 0.0f;
