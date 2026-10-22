@@ -44,8 +44,8 @@ Switch styles during gameplay using the D-Pad or keyboard keys **Z, X, C, V**:
 
 The proxy is built with g++ from the `dmc1-switch` directory:
 
-```
-g++ -shared -O2 -std=c++17 -static -static-libgcc -static-libstdc++ -o build\XINPUT9_1_0.dll src\xinput_proxy.cpp src\mod.cpp src\ui.cpp src\style.cpp src\style_trickster.cpp xinput.def -ld3d11 -ldxgi -ld3dcompiler -lgdiplus -lgdi32 -lole32 -luuid -luser32
+```powershell
+g++ -shared -O2 -std=c++17 -static -static-libgcc -static-libstdc++ -I src -I src/dante -I src/trish -I src/lady -I src/power -I src/jackpot -o build\XINPUT9_1_0.dll src\jackpot\xinput_proxy.cpp src\power\mod.cpp src\jackpot\ui.cpp src\dante\style.cpp src\lady\style_trickster.cpp src\lady\the_void.cpp src\trish\coordinates.cpp xinput.def -ld3d11 -ldxgi -ld3dcompiler -lgdiplus -lgdi32 -lole32 -luuid -luser32
 ```
 
 `tools/build_installer.py` then packs that DLL into `ApplyDMC1Switch.exe`.

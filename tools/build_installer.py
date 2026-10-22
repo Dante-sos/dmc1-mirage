@@ -47,7 +47,7 @@ def main():
         str(root),
         "-o",
         str(out),
-        str(root / "src" / "install.cpp"),
+        str(next((root / "src").glob("**/install.cpp"))),
         "-lcomdlg32",
         "-lshell32",
         "-lole32",
