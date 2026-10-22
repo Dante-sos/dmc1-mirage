@@ -17,7 +17,7 @@ constexpr uintptr_t kStage1Room22FileRva  = 0x5A45BC;
 
 constexpr uint32_t kVoidStage = 1;
 constexpr uint32_t kVoidRoom  = 22;
-constexpr float kVoidSpawnPos[4] = {7600.0f, 0.0f, -1250.0f, 1.20f};
+constexpr float kVoidSpawnPos[4] = {8341.0f, 0.0f, -1418.0f, -2.10f};
 
 // Native Mission 8 starting configuration in r11d.fsd (Room 22 / 0x16)
 constexpr uint32_t kOrigStage = 1;
@@ -294,7 +294,7 @@ void void_update_frame() {
         // immediately pop him out onto the arena floor!
         float cur_x = *reinterpret_cast<float*>(player + 0x1AC0);
         float cur_z = *reinterpret_cast<float*>(player + 0x1AC8);
-        if (cur_x > 7400.0f && cur_z < -1450.0f) {
+        if (cur_x < 7800.0f && cur_z < -1450.0f) {
             void_reset_player();
         }
 
