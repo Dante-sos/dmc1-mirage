@@ -61,7 +61,7 @@ void log_line(const char* fmt, ...) {
     if (!slash) {
         return;
     }
-    wcscpy(slash + 1, L"dmc1-switch.log");
+    wcscpy(slash + 1, L"dmc1-mirage.log");
     FILE* file = _wfopen(path, L"a");
     if (!file) {
         return;
@@ -750,12 +750,12 @@ void draw_launcher_menu(float width, float height) {
     if (scale < 0.65f) scale = 0.65f;
     if (scale > 1.55f) scale = 1.55f;
 
-    // Top Crimson Accent Banner
+    // Top Accent Banner
     draw_rect(verts, 0, 0, width, 4.0f * scale, 0.85f, 0.12f, 0.18f, 1.0f);
 
     // Header Title
     const char* title_main = "DEVIL MAY CRY";
-    const char* title_sub = "CRIMSON LAUNCHER  //  STYLE SWITCH EDITION";
+    const char* title_sub = "MIRAGE LAUNCHER  //  STYLE SWITCH EDITION";
 
     float title_scale = scale * 0.95f;
     float title_track = 1.6f * scale;
@@ -890,7 +890,7 @@ void draw_boss_rush_screen(float width, float height) {
     // Status box
     float sb_y = card_y + 102.0f * scale;
     draw_rect(verts, card_x + 30.0f * scale, sb_y, card_w - 60.0f * scale, 38.0f * scale, 0.40f, 0.06f, 0.08f, 0.85f);
-    draw_text(verts, card_x + 44.0f * scale, sb_y + 9.0f * scale, "STATUS: COMING SOON IN FUTURE DMC1 SWITCH UPDATE", scale * 0.40f, track, 1.0f, 0.88f, 0.35f, 1.0f);
+    draw_text(verts, card_x + 44.0f * scale, sb_y + 9.0f * scale, "STATUS: COMING SOON IN FUTURE DMC1 MIRAGE UPDATE", scale * 0.40f, track, 1.0f, 0.88f, 0.35f, 1.0f);
 
     float text_y = sb_y + 56.0f * scale;
     float body_sc = scale * 0.38f;
@@ -961,7 +961,7 @@ void draw_settings_screen(float width, float height) {
     float title_scale = scale * 0.68f;
     float track = 0.8f * scale;
     draw_text_outlined(verts, card_x + 30.0f * scale, card_y + 20.0f * scale, "SETTINGS & CONTROLS", title_scale, track, 0.98f, 0.92f, 0.80f, 1.0f);
-    draw_text(verts, card_x + 30.0f * scale, card_y + 54.0f * scale, "CRIMSON STYLE SWITCH CONFIGURATION", scale * 0.38f, track, 0.85f, 0.20f, 0.22f, 1.0f);
+    draw_text(verts, card_x + 30.0f * scale, card_y + 54.0f * scale, "MIRAGE STYLE SWITCH CONFIGURATION", scale * 0.38f, track, 0.85f, 0.20f, 0.22f, 1.0f);
 
     draw_rect(verts, card_x + 30.0f * scale, card_y + 80.0f * scale, card_w - 60.0f * scale, 1.5f * scale, 0.70f, 0.15f, 0.18f, 0.70f);
 

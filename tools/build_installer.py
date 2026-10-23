@@ -8,7 +8,7 @@ background = pathlib.Path(r"c:\Program Files (x86)\Steam\steamapps\common\Devil 
 if not background.exists():
     background = root / "assets" / "dmc1-mission-bg.jpg"
 payload = root / "payload.h"
-out = root / "build" / "ApplyDMC1Switch.exe"
+out = root / "build" / "ApplyDMC1Mirage.exe"
 
 
 def bytes_of(name, data):

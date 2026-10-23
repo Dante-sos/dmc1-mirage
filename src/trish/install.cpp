@@ -150,7 +150,7 @@ std::wstring find_game() {
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     std::wstring exe = find_game();
     if (exe.empty()) {
-        MessageBoxW(nullptr, L"Could not find dmc1.exe.", L"DMC1 Switch", MB_ICONERROR);
+        MessageBoxW(nullptr, L"Could not find dmc1.exe.", L"DMC1 Mirage", MB_ICONERROR);
         return 1;
     }
     const unsigned char* dll = nullptr;
@@ -166,7 +166,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     std::vector<unsigned char> dll_bytes;
     std::vector<unsigned char> background_bytes;
     if (!load_sibling(L"XINPUT9_1_0.dll", dll_bytes)) {
-        MessageBoxW(nullptr, L"XINPUT9_1_0.dll was not found next to this installer.", L"DMC1 Switch", MB_ICONERROR);
+        MessageBoxW(nullptr, L"XINPUT9_1_0.dll was not found next to this installer.", L"DMC1 Mirage", MB_ICONERROR);
         return 1;
     }
     load_sibling(L"dmc1-mission-bg.jpg", background_bytes);
@@ -180,13 +180,13 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     std::wstring dir = parent_of(exe);
     std::wstring dll_path = join(dir, L"XINPUT9_1_0.dll");
     if (!write_bytes(dll_path, dll, dll_size)) {
-        MessageBoxW(nullptr, L"Close Devil May Cry and run this again. The game is using the mod file.", L"DMC1 Switch", MB_ICONWARNING);
+        MessageBoxW(nullptr, L"Close Devil May Cry and run this again. The game is using the mod file.", L"DMC1 Mirage", MB_ICONWARNING);
         return 1;
     }
     if (background && background_size > 0) {
         write_bytes(join(dir, L"dmc1-mission-bg.jpg"), background, background_size);
     }
     std::wstring message = L"Installed for\n" + exe + L"\n\nRestart the game. This does not modify dmc1.exe.";
-    MessageBoxW(nullptr, message.c_str(), L"DMC1 Switch", MB_OK);
+    MessageBoxW(nullptr, message.c_str(), L"DMC1 Mirage", MB_OK);
     return 0;
 }

@@ -124,7 +124,13 @@ void read_ini() {
     GetModuleFileNameW(nullptr, path, MAX_PATH);
     wchar_t* slash = wcsrchr(path, L'\\');
     if (slash) {
-        wcscpy(slash + 1, L"dmc1-switch.ini");
+        wcscpy(slash + 1, L"dmc1-mirage.ini");
+        if (GetFileAttributesW(path) == INVALID_FILE_ATTRIBUTES) {
+            wcscpy(slash + 1, L"dmc1-switch.ini");
+            if (GetFileAttributesW(path) == INVALID_FILE_ATTRIBUTES) {
+                wcscpy(slash + 1, L"dmc1-mirage.ini");
+            }
+        }
     }
     g_tap_ms = GetPrivateProfileIntW(L"switch", L"tap_ms", 180, path);
     g_trigger_threshold = GetPrivateProfileIntW(L"switch", L"trigger_threshold", 30, path);
@@ -886,11 +892,11 @@ void mod_start() {
     GetModuleFileNameW(nullptr, path, MAX_PATH);
     wchar_t* slash = wcsrchr(path, L'\\');
     if (slash) {
-        wcscpy(slash + 1, L"dmc1-switch.log");
+        wcscpy(slash + 1, L"dmc1-mirage.log");
     }
     g_log = _wfopen(path, L"a");
     read_ini();
-    log_line("DMC1 switch loaded base=%p tap_ms=%d", reinterpret_cast<void*>(g_base), g_tap_ms);
+    log_line("DMC1 Mirage loaded base=%p tap_ms=%d", reinterpret_cast<void*>(g_base), g_tap_ms);
     install_hooks();
     style_init();
     void_init();
