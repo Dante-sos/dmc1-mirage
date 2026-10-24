@@ -558,6 +558,8 @@ void style_hud_render(float screen_w, float screen_h) {
         StyleType::Trickster, StyleType::Gunslinger, StyleType::Swordmaster, StyleType::RoyalGuard};
 
     float gk[kCrossCount];      // per-letter atlas->screen factor
+    float hw_in[kCrossCount];   // inactive half extents
+    float hh_in[kCrossCount];
     float hw[kCrossCount];      // actual half extents
     float hh[kCrossCount];
     for (int i = 0; i < kCrossCount; ++i) {
@@ -565,26 +567,28 @@ void style_hud_render(float screen_w, float screen_h) {
         float ih = g_cross_ink_h[i] > 0.0f ? g_cross_ink_h[i] : ref_h;
         bool act = (kSlotStyle[i] == active_style);
         gk[i] = act ? k_act : k_inact;
+        hw_in[i] = 0.5f * iw * k_inact;
+        hh_in[i] = 0.5f * ih * k_inact;
         hw[i] = 0.5f * iw * gk[i];
         hh[i] = 0.5f * ih * gk[i];
     }
 
     // --- Equal diamond spacing (symmetric clearance & distance across all 4 neighbors) ---
-    float dist = 18.0f * scale;
-    float pop  = 3.0f * scale;
+    float dist = 23.0f * scale;
+    float pop  = 2.5f * scale;
 
     float lx[kCrossCount], ly[kCrossCount];
     lx[kCrossT] = cx;
-    ly[kCrossT] = cy - dist - (active_style == StyleType::Trickster ? pop : 0.0f);
+    ly[kCrossT] = cy - dist - (active_style == StyleType::Trickster ? ((hh[kCrossT] - hh_in[kCrossT]) + pop) : 0.0f);
 
-    lx[kCrossG] = cx - dist - (active_style == StyleType::Gunslinger ? pop : 0.0f);
+    lx[kCrossG] = cx - dist - (active_style == StyleType::Gunslinger ? ((hw[kCrossG] - hw_in[kCrossG]) + pop) : 0.0f);
     ly[kCrossG] = cy;
 
-    lx[kCrossS] = cx + dist + (active_style == StyleType::Swordmaster ? pop : 0.0f);
+    lx[kCrossS] = cx + dist + (active_style == StyleType::Swordmaster ? ((hw[kCrossS] - hw_in[kCrossS]) + pop) : 0.0f);
     ly[kCrossS] = cy;
 
     lx[kCrossR] = cx;
-    ly[kCrossR] = cy + dist + (active_style == StyleType::RoyalGuard ? pop : 0.0f);
+    ly[kCrossR] = cy + dist + (active_style == StyleType::RoyalGuard ? ((hh[kCrossR] - hh_in[kCrossR]) + pop) : 0.0f);
 
     // 1. Lower-Left Arc Dial (between G and R), hugging the outside of the cluster
     float dial_r = dist + 14.0f * scale;
