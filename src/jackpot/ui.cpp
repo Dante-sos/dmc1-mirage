@@ -431,8 +431,7 @@ Texture2D font : register(t0);
 SamplerState samp : register(s0);
 float4 ps_main(Vout i) : SV_TARGET {
     float4 t = font.Sample(samp, i.uv);
-    float3 rgb = lerp(i.col.rgb, t.rgb * i.col.rgb, texMode);
-    return float4(rgb, i.col.a * t.a);
+    return float4(t.rgb * i.col.rgb, t.a * i.col.a);
 }
 )";
     ID3DBlob* vs_blob = nullptr;
@@ -719,6 +718,7 @@ void submit(std::vector<Vertex>& verts, float width, float height, float tex_mod
     g_context->VSSetShader(g_vs, nullptr, 0);
     g_context->VSSetConstantBuffers(0, 1, &g_cb);
     g_context->PSSetShader(g_ps, nullptr, 0);
+    g_context->PSSetConstantBuffers(0, 1, &g_cb);
     g_context->PSSetShaderResources(0, 1, &texture);
     g_context->PSSetSamplers(0, 1, &g_sampler);
     float blend_factor[4] = {0, 0, 0, 0};

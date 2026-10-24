@@ -522,7 +522,7 @@ void style_hud_render(float screen_w, float screen_h) {
     // =========================================================================
     if (g_glass_view) {
         std::vector<Vertex> glass_verts;
-        glass_verts.reserve(6);
+        glass_verts.reserve(24);
 
         // Extended 1376x768 corner glass texture (anchored to top-left screen borders matching DMC5)
         // Crater (transparent breach) center measured from alpha: u=0.2158, v=0.3109
@@ -534,10 +534,16 @@ void style_hud_render(float screen_w, float screen_h) {
         float gx = cx - gw * 0.2158f;
         float gy = cy - gh * 0.3109f;
 
-        // Translucent glass body with switch flash modulation
-        float glass_alpha = 0.78f + anim_factor * 0.15f;
-        float flash = 1.0f + anim_factor * 0.35f;
-        push_textured_quad(glass_verts, gx, gy, gw, gh, 0.0f, 0.0f, 1.0f, 1.0f, flash, flash, flash, glass_alpha);
+        // 1. Cast shadow of the shattered glass onto the scene
+        float shadow_ox = 3.5f * scale;
+        float shadow_oy = 4.5f * scale;
+        push_textured_quad(glass_verts, gx + shadow_ox, gy + shadow_oy, gw, gh,
+                           0.0f, 0.0f, 1.0f, 1.0f,
+                           0.0f, 0.0f, 0.0f, 0.50f);
+
+        // 2. Translucent shattered glass body (exact colors and alpha as authored in the PNG, no tint)
+        push_textured_quad(glass_verts, gx, gy, gw, gh, 0.0f, 0.0f, 1.0f, 1.0f,
+                           1.0f, 1.0f, 1.0f, 1.0f);
 
         submit(glass_verts, screen_w, screen_h, 1.0f, g_glass_view);
     }
@@ -616,31 +622,7 @@ void style_hud_render(float screen_w, float screen_h) {
         push_thick_line(hud_verts, nx, by - th, nx, by + th, 1.0f * scale, 0.65f, 0.70f, 0.78f, 0.65f);
     }
 
-    // 3. Dial Ring around R (always visible, illuminates when Royalguard is active)
-    bool is_rg = (active_style == StyleType::RoyalGuard);
-    float aegis_r_in  = std::max(hw[kCrossR], hh[kCrossR]) * 1.15f;
-    float aegis_r_out = aegis_r_in + 1.6f * scale;
-    float ring_r = is_rg ? 0.25f : 0.72f;
-    float ring_g = is_rg ? 0.95f : 0.12f;
-    float ring_b = is_rg ? 0.35f : 0.12f;
-    float ring_a = is_rg ? 0.95f : 0.90f;
-    float rx = lx[kCrossR], ry = ly[kCrossR];
-    push_ring_arc(hud_verts, rx, ry, aegis_r_in - 1.2f * scale, aegis_r_out + 1.2f * scale, 0.0f, kPi * 2.0f, 40, 0.02f, 0.01f, 0.01f, 0.92f);
-    push_ring_arc(hud_verts, rx, ry, aegis_r_in, aegis_r_out, 0.0f, kPi * 2.0f, 40, ring_r, ring_g, ring_b, ring_a);
-    float rot = is_rg ? (static_cast<float>(now % 8000) / 8000.0f * (kPi * 2.0f)) : 0.0f;
-    float tick_r = is_rg ? 1.0f : 0.88f;
-    float tick_g = is_rg ? 1.0f : 0.28f;
-    float tick_b = is_rg ? 1.0f : 0.28f;
-    for (int i = 0; i < 12; ++i) {
-        float a = rot + static_cast<float>(i) * (kPi * 2.0f / 12.0f);
-        float ca = std::cos(a), sa = std::sin(a);
-        push_thick_line(hud_verts,
-                        rx + ca * (aegis_r_in - 2.0f * scale), ry + sa * (aegis_r_in - 2.0f * scale),
-                        rx + ca * (aegis_r_out + 2.0f * scale), ry + sa * (aegis_r_out + 2.0f * scale),
-                        1.2f * scale, tick_r, tick_g, tick_b, 0.92f);
-    }
-
-    // 4. Subtle upright cant per letter (strictly upright, S slanting fixed, no wobble on switch)
+    // 3. Subtle upright cant per letter (strictly upright, S slanting fixed, no wobble on switch)
     float rots[kCrossCount];
     rots[kCrossT] = get_upright_random_rotation('T', g_switch_tick, -0.020f, 1.0f);
     rots[kCrossG] = get_upright_random_rotation('g', g_switch_tick, -0.025f, 1.0f);
@@ -652,7 +634,7 @@ void style_hud_render(float screen_w, float screen_h) {
         if (kSlotStyle[i] == active_style) active_idx = i;
     }
 
-    // 5. Inactive 3D letters, then the active letter on top (enlarges prominently with deep 3D bevels)
+    // 4. Inactive 3D letters, then the active letter on top (enlarges prominently with deep 3D bevels)
     const float inact_r = 0.72f, inact_g = 0.12f, inact_b = 0.12f;
     for (int i = 0; i < kCrossCount; ++i) {
         if (i == active_idx) continue;
@@ -666,7 +648,7 @@ void style_hud_render(float screen_w, float screen_h) {
                                1.8f * scale, (3.2f + anim_factor * 1.5f) * scale, true);
     }
 
-    // Submit: HUD geometry (dial arc, bracket, Aegis ring) -> 3D style cross letters
+    // Submit: HUD geometry (dial arc, bracket) -> 3D style cross letters
     ID3D11ShaderResourceView* font_view = ui_get_font_view();
     if (font_view && !hud_verts.empty()) {
         submit(hud_verts, screen_w, screen_h, 0.0f, font_view);
