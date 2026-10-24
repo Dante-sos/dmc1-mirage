@@ -1,5 +1,7 @@
 #include "mod.h"
 #include "style.h"
+#include "style_hud.h"
+#include "style_assets.h"
 #include "style_trickster.h"
 #include "the_void_menu.h"
 
@@ -19,6 +21,10 @@ constexpr int kCell = 40;
 constexpr int kCols = 16;
 constexpr int kAtlas = kCell * kCols;
 int g_glyph_w[95] = {};
+// Visual (ink bounding box) center of each glyph inside its atlas cell, in cell pixels.
+// Glyphs are drawn DT_LEFT, so the ink is NOT centered at (kCell/2, kCell/2).
+float g_glyph_cx[95] = {};
+float g_glyph_cy[95] = {};
 
 namespace {
 
@@ -171,6 +177,7 @@ void release_renderer() {
     drop(g_device);
     g_vb_capacity = 0;
     g_ready = false;
+    style_hud_release_assets();
 }
 
 bool compile_shader(const char* source, const char* entry, const char* target, ID3DBlob** blob) {
@@ -221,13 +228,31 @@ bool build_font(ID3D11Device* device) {
     DeleteObject(black);
     SetBkMode(dc, TRANSPARENT);
     SetTextColor(dc, RGB(255, 255, 255));
-    HFONT font = CreateFontW(-32, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH, L"Times New Roman");
+    DWORD num_fonts = 0;
+    AddFontMemResourceEx((void*)kDmc5FontBytes, static_cast<DWORD>(kDmc5FontSize), nullptr, &num_fonts);
+    AddFontResourceExW(L"fonts\\Heavy Metal Rocking.ttf", FR_PRIVATE, nullptr);
+    AddFontResourceExW(L"Heavy Metal Rocking.ttf", FR_PRIVATE, nullptr);
+    AddFontResourceExW(L"fonts\\berosong.regular.ttf", FR_PRIVATE, nullptr);
+    AddFontResourceExW(L"berosong.regular.ttf", FR_PRIVATE, nullptr);
+    HFONT font = CreateFontW(-19, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH, L"Heavy Metal Rocking");
+    if (!font) {
+        font = CreateFontW(-19, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH, L"Heavy Metal Rocking");
+    }
+    if (!font) {
+        font = CreateFontW(-28, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH, L"Berosong");
+    }
+    if (!font) {
+        font = CreateFontW(-34, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH, L"DMC5Font");
+    }
+    if (!font) {
+        font = CreateFontW(-32, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH, L"Times New Roman");
+    }
     HGDIOBJ old_font = SelectObject(dc, font);
     for (int ch = 32; ch <= 126; ++ch) {
         int cell = ch - 31;
         int col = cell % kCols;
         int row = cell / kCols;
-        RECT rect{col * kCell + 1, row * kCell, (col + 1) * kCell, (row + 1) * kCell};
+        RECT rect{col * kCell + 1, row * kCell - 1, (col + 1) * kCell, (row + 1) * kCell - 1};
         wchar_t text[2] = {static_cast<wchar_t>(ch), 0};
         DrawTextW(dc, text, 1, &rect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
         SIZE size{};
@@ -263,6 +288,29 @@ bool build_font(ID3D11Device* device) {
         px[1] = 255;
         px[2] = 255;
         px[3] = lum;
+    }
+    for (int ch = 32; ch <= 126; ++ch) {
+        int cell = ch - 31;
+        int cx0 = (cell % kCols) * kCell;
+        int cy0 = (cell / kCols) * kCell;
+        int min_x = kCell, min_y = kCell, max_x = -1, max_y = -1;
+        for (int y = 0; y < kCell; ++y) {
+            for (int x = 0; x < kCell; ++x) {
+                if (pixels[((cy0 + y) * kAtlas + (cx0 + x)) * 4 + 3] > 32) {
+                    if (x < min_x) min_x = x;
+                    if (x > max_x) max_x = x;
+                    if (y < min_y) min_y = y;
+                    if (y > max_y) max_y = y;
+                }
+            }
+        }
+        if (max_x >= 0) {
+            g_glyph_cx[ch - 32] = 0.5f * static_cast<float>(min_x + max_x + 1);
+            g_glyph_cy[ch - 32] = 0.5f * static_cast<float>(min_y + max_y + 1);
+        } else {
+            g_glyph_cx[ch - 32] = kCell * 0.5f;
+            g_glyph_cy[ch - 32] = kCell * 0.5f;
+        }
     }
     D3D11_TEXTURE2D_DESC desc{};
     desc.Width = kAtlas;
@@ -438,6 +486,7 @@ float4 ps_main(Vout i) : SV_TARGET {
         return false;
     }
     load_background(device);
+    style_hud_load_assets(device);
     g_ready = true;
     log_line("overlay renderer ready");
     return true;
@@ -627,8 +676,6 @@ void draw_text_outlined(std::vector<Vertex>& verts, float x, float y, const char
     draw_text(verts, x, y, text, scale, tracking, r, g, b, a);
 }
 
-namespace {
-
 void submit(std::vector<Vertex>& verts, float width, float height, float tex_mode, ID3D11ShaderResourceView* texture) {
     if (verts.empty() || !texture) {
         verts.clear();
@@ -686,6 +733,12 @@ void submit(std::vector<Vertex>& verts, float width, float height, float tex_mod
     g_context->Draw(static_cast<UINT>(verts.size()), 0);
     verts.clear();
 }
+
+ID3D11ShaderResourceView* ui_get_font_view() {
+    return g_font_view;
+}
+
+namespace {
 
 void draw_background(std::vector<Vertex>& verts, float width, float height) {
     float u0 = 0, v0 = 0, u1 = 1, v1 = 1;
@@ -1087,55 +1140,16 @@ void draw_mission_screen(float width, float height) {
 }
 
 void draw_style_hud(float width, float height) {
-    StyleType style = style_current();
-    if (style == StyleType::None) {
-        return;
-    }
-
     std::vector<Vertex> verts;
-    verts.reserve(256);
+    verts.reserve(2048);
 
-    float scale = height / 1080.0f;
-    if (scale < 0.65f) scale = 0.65f;
-    if (scale > 1.4f) scale = 1.4f;
-
-    const char* s_name = style_name(style);
-    const char* a_name = style_action_name();
-
-    char label[64];
-    if (a_name && a_name[0] != '\0') {
-        std::snprintf(label, sizeof(label), "%s [%s]", s_name, a_name);
-    } else {
-        std::snprintf(label, sizeof(label), "%s", s_name);
-    }
-
-    float text_sc = scale * 0.44f;
-    float tracking = 0.85f * scale;
-    float text_w = text_width(label, text_sc, tracking);
-
-    float pad_x = 12.0f * scale;
-    float pad_y = 6.0f * scale;
-    float box_w = text_w + pad_x * 2.0f;
-    float box_h = 24.0f * scale + pad_y * 2.0f;
-
-    float x = 36.0f * scale;
-    float y = height - box_h - 26.0f * scale;
-
-    draw_rect(verts, x, y, box_w, box_h, 0.04f, 0.04f, 0.06f, 0.72f);
-
-    float r = 1.0f, g = 0.84f, b = 0.22f; // Trickster Gold
-    if (style == StyleType::RoyalGuard) {
-        r = 0.92f; g = 0.22f; b = 0.22f;
-    } else if (style == StyleType::Gunslinger) {
-        r = 0.25f; g = 0.75f; b = 1.0f;
-    } else if (style == StyleType::Swordmaster) {
-        r = 1.0f; g = 0.45f; b = 0.15f;
-    }
-    draw_rect(verts, x, y, box_w, 2.0f * scale, r, g, b, 0.90f);
-
-    draw_text_outlined(verts, x + pad_x, y + pad_y, label, text_sc, tracking, r, g, b, 1.0f);
+    style_hud_render(width, height);
 
     if (mod_is_the_void()) {
+        float scale = height / 1080.0f;
+        if (scale < 0.65f) scale = 0.65f;
+        if (scale > 1.4f) scale = 1.4f;
+
         const char* void_title = "THE VOID  //  COMBO ARENA";
         const char* void_sub = "[INSERT / L3+R3] Training Menu  |  [SELECT / F5] Reset Dummy";
         float v_sc = scale * 0.38f;
@@ -1143,17 +1157,22 @@ void draw_style_hud(float width, float height) {
         float v_track = 0.8f * scale;
         float v_w1 = text_width(void_title, v_sc, v_track);
         float v_w2 = text_width(void_sub, v_sub_sc, 0.4f * scale);
+        float pad_x = 12.0f * scale;
+        float pad_y = 6.0f * scale;
         float v_box_w = (v_w1 > v_w2 ? v_w1 : v_w2) + pad_x * 2.0f;
         float v_box_h = 36.0f * scale + pad_y * 2.0f;
-        float v_y = y - v_box_h - 10.0f * scale;
+        float v_x = 36.0f * scale;
+        float v_y = height - v_box_h - 26.0f * scale;
 
-        draw_rect(verts, x, v_y, v_box_w, v_box_h, 0.0f, 0.0f, 0.0f, 0.35f);
-        draw_rect(verts, x, v_y, v_box_w, 2.0f * scale, 1.0f, 1.0f, 1.0f, 0.90f);
-        draw_text_outlined(verts, x + pad_x, v_y + pad_y, void_title, v_sc, v_track, 1.0f, 1.0f, 1.0f, 1.0f);
-        draw_text(verts, x + pad_x, v_y + pad_y + 18.0f * scale, void_sub, v_sub_sc, 0.4f * scale, 0.90f, 0.90f, 0.90f, 0.95f);
+        draw_rect(verts, v_x, v_y, v_box_w, v_box_h, 0.0f, 0.0f, 0.0f, 0.35f);
+        draw_rect(verts, v_x, v_y, v_box_w, 2.0f * scale, 1.0f, 1.0f, 1.0f, 0.90f);
+        draw_text_outlined(verts, v_x + pad_x, v_y + pad_y, void_title, v_sc, v_track, 1.0f, 1.0f, 1.0f, 1.0f);
+        draw_text(verts, v_x + pad_x, v_y + pad_y + 18.0f * scale, void_sub, v_sub_sc, 0.4f * scale, 0.90f, 0.90f, 0.90f, 0.95f);
     }
 
-    submit(verts, width, height, 0.0f, g_font_view);
+    if (!verts.empty()) {
+        submit(verts, width, height, 0.0f, g_font_view);
+    }
 }
 
 void draw_screen(float width, float height) {

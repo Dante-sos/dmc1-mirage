@@ -1,4 +1,5 @@
 #include "style.h"
+#include "style_hud.h"
 #include "style_trickster.h"
 #include "mod.h"
 
@@ -98,6 +99,7 @@ void style_init() {
     g_key_v = false;
     g_key_l = false;
     trickster_init();
+    style_hud_init();
     mod_log("style system initialized: active=TRICKSTER (keys: Z=Trickster, X=Swordmaster, C=Gunslinger, V=RoyalGuard, L=Action)");
 }
 
@@ -125,6 +127,7 @@ void style_set(StyleType type) {
         return;
     }
     g_active_style = type;
+    style_hud_on_switch(type);
     mod_log("style switched to %s", style_name(type));
 }
 

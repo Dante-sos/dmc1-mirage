@@ -61,7 +61,7 @@ Select **The Void** from the title screen Mission Select menu to enter the infin
 The proxy is built with g++ from the `dmc1-mirage` directory:
 
 ```powershell
-g++ -shared -O2 -std=c++17 -static -static-libgcc -static-libstdc++ -I src -I src/dante -I src/trish -I src/lady -I src/power -I src/jackpot -o build\XINPUT9_1_0.dll src\jackpot\xinput_proxy.cpp src\power\mod.cpp src\jackpot\ui.cpp src\dante\style.cpp src\dante\style_trickster.cpp src\lady\the_void.cpp src\lady\the_void_menu.cpp src\trish\coordinates.cpp xinput.def -ld3d11 -ldxgi -ld3dcompiler -lgdiplus -lgdi32 -lole32 -luuid -luser32
+g++ -shared -O2 -std=c++17 -static -static-libgcc -static-libstdc++ -I src -I src/dante -I src/trish -I src/lady -I src/power -I src/jackpot -o build\XINPUT9_1_0.dll src\jackpot\xinput_proxy.cpp src\power\mod.cpp src\jackpot\ui.cpp src\dante\style.cpp src\dante\style_trickster.cpp src\dante\style_hud.cpp src\lady\the_void.cpp src\lady\the_void_menu.cpp src\trish\coordinates.cpp xinput.def -ld3d11 -ldxgi -ld3dcompiler -lgdiplus -lgdi32 -lole32 -luuid -luser32
 ```
 
 `tools/build_installer.py` then packs that DLL into `ApplyDMC1Mirage.exe`.
