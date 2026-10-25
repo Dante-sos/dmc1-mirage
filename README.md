@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/mirage%20logo.png" alt="Devil May Cry Mirage" width="560"/>
+  <img src="assets/mirage-github.png" alt="Logo" style="width: 800px;"/> 
 </p>
 
 # DMC1 Mirage
