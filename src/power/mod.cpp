@@ -64,7 +64,7 @@ std::atomic<bool> g_event_hold_enabled{true};
 // Title menu request applied on the game thread: 0 none, 1 new game / mission, 2 load data.
 std::atomic<int> g_menu_request{0};
 // While true, the title attract-demo timer is held so the intro video never starts behind the launcher.
-std::atomic<bool> g_hold_title{true};
+std::atomic<bool> g_hold_title{false};
 bool g_logged_title_loop = false;
 bool g_logged_event_loop = false;
 DWORD g_stage_tick = 0;
@@ -110,6 +110,19 @@ uint8_t* actor() {
 }
 
 bool in_game() {
+    if (g_base) {
+        auto slot = reinterpret_cast<uint8_t**>(g_base + kMenuConfigPtrRva);
+        uint8_t* config = slot ? *slot : nullptr;
+        if (config) {
+            auto val = reinterpret_cast<uintptr_t>(config);
+            if (val >= 0x10000) {
+                uint8_t state0 = config[0];
+                if (state0 == 2 || state0 == 4 || state0 == 5 || state0 == 6 || state0 == 9 || state0 == 0x0A) {
+                    return false;
+                }
+            }
+        }
+    }
     uint8_t* data = session();
     if (!data) {
         return false;
@@ -421,29 +434,58 @@ void write_mission_room(int mission) {
 extern "C" void apply_pending_at_menu() {
     auto slot = reinterpret_cast<uint8_t**>(g_base + kMenuConfigPtrRva);
     uint8_t* config = slot ? *slot : nullptr;
-    if (!g_logged_title_loop && config) {
-        g_logged_title_loop = true;
-        log_line("title loop active state %u", config[0]);
-    }
     if (!config) {
         return;
+    }
+    static uint8_t s_last_state0 = 0xFF;
+    static uint8_t s_last_state1 = 0xFF;
+    if (config[0] != s_last_state0 || config[1] != s_last_state1) {
+        s_last_state0 = config[0];
+        s_last_state1 = config[1];
+        auto room_slot = reinterpret_cast<uint8_t**>(g_base + kRoomSrcPtrRva);
+        uint8_t* room = room_slot ? *room_slot : nullptr;
+        log_line("title state change: state0=%u state1=%u timer=%d movie_active=%u",
+                 config[0], config[1], *reinterpret_cast<int32_t*>(config + 0x34),
+                 room ? room[0x64] : 0);
     }
     if (void_is_active()) {
         void_on_menu_loop(config);
     }
+    if (config[0] == 6) {
+        config[0x0D] = 0;
+        config[1] = 0;
+        write_u32(config, 7);
+        log_line("title state 6 bypassed -> direct state 7 launch");
+    }
     if (config[0] != 5) {
         return;
     }
-    if (g_hold_title.load()) {
-        // +0x34 counts down to the attract demo; +0x30 is its reload value (set by title state 4).
-        std::memcpy(config + 0x34, config + 0x30, sizeof(uint32_t));
+    if (config[0] == 5 && config[1] >= 2 && g_menu_request.load() == 0) {
+        g_hold_title.store(true);
+    }
+    if (config[0] == 5 && g_hold_title.load()) {
+        // Permanently lock the attract demo countdown and reload values, and clear the timeout trigger flags
+        // so the game engine never times out or triggers the attract movie/demo while on the title screen.
+        *reinterpret_cast<uint32_t*>(config + 0x30) = 0x7FFFFFFF;
+        *reinterpret_cast<uint32_t*>(config + 0x34) = 0x7FFFFFFF;
+        config[0x0A] = 0;
+        config[0x09] = 0;
+        uint8_t* s = session();
+        if (s) {
+            *reinterpret_cast<uint32_t*>(s + 0x9C) = 0;
+        }
     }
     int request = g_menu_request.load();
-    // Substate 2 is the native "waiting for input" step of the title menu (state 5).
-    if (request == 0 || config[1] != 2) {
+    if (request == 0) {
         return;
     }
     g_menu_request.store(0);
+    g_hold_title.store(false);
+    auto room_slot = reinterpret_cast<uint8_t**>(g_base + kRoomSrcPtrRva);
+    uint8_t* room = room_slot ? *room_slot : nullptr;
+    if (room) {
+        room[0x64] = 0;
+    }
     if (request == 1) {
         int mission = g_pending_mission.load();
         int mode = g_pending_mode.load();
@@ -457,8 +499,8 @@ extern "C" void apply_pending_at_menu() {
             config[0x0B] = static_cast<uint8_t>(mode);
             config[0x0D] = 0;
             config[1] = 0;
-            write_u32(config, 6);
-            log_line("title menu -> new game mission %d mode %d", mission, mode);
+            write_u32(config, 7);
+            log_line("title menu -> new game mission %d mode %d (direct state 7)", mission, mode);
         }
     } else if (request == 2) {
         // Same writes as the native Load confirm (0x3f8cfa..0x3f8d00).
@@ -756,6 +798,18 @@ void install_hooks() {
         log_line("hook patch failed");
         return;
     }
+    uint8_t* title_render_site = reinterpret_cast<uint8_t*>(g_base + 0x3F8B30);
+    const uint8_t orig_render_jmp[5] = {0xE9, 0xCB, 0x06, 0x00, 0x00};
+    const uint8_t nop_render_jmp[5] = {0xC3, 0x90, 0x90, 0x90, 0x90};
+    DWORD old_render_prot = 0;
+    if (VirtualProtect(title_render_site, 5, PAGE_EXECUTE_READWRITE, &old_render_prot)) {
+        if (std::memcmp(title_render_site, orig_render_jmp, 5) == 0) {
+            std::memcpy(title_render_site, nop_render_jmp, 5);
+            log_line("title menu native render bypassed at %p", title_render_site);
+        }
+        VirtualProtect(title_render_site, 5, old_render_prot, &old_render_prot);
+        FlushInstructionCache(GetCurrentProcess(), title_render_site, 5);
+    }
     g_hooks_ready = true;
     log_line("hooks installed main=%p load=%p start=%p enter=%p menu=%p event=%p", main_stub, load_stub, start_stub, enter_stub, menu_stub, event_stub);
 }
@@ -806,6 +860,44 @@ bool mod_format_coords(char* buf, size_t size) {
     return coord_format_hud_string(buf, size);
 }
 
+void mod_patch_briefing_skip(bool enable) {
+    if (!g_base) return;
+    uint8_t* site = reinterpret_cast<uint8_t*>(g_base + 0x24FE5E);
+    DWORD old_prot = 0;
+    const uint8_t orig[6] = {0x0F, 0x84, 0xB7, 0x00, 0x00, 0x00};
+    const uint8_t patched[6] = {0xE9, 0xB8, 0x00, 0x00, 0x00, 0x90};
+    if (VirtualProtect(site, 6, PAGE_EXECUTE_READWRITE, &old_prot)) {
+        if (enable) {
+            std::memcpy(site, patched, 6);
+            log_line("briefing skip patched at %p", site);
+        } else {
+            std::memcpy(site, orig, 6);
+            log_line("briefing skip restored at %p", site);
+        }
+        VirtualProtect(site, 6, old_prot, &old_prot);
+        FlushInstructionCache(GetCurrentProcess(), site, 6);
+    }
+}
+
+bool mod_is_title_ready() {
+    if (!g_base) return false;
+    auto slot = reinterpret_cast<uint8_t**>(g_base + kMenuConfigPtrRva);
+    if (!slot) return false;
+    uint8_t* config = *slot;
+    if (!config) return false;
+    auto val = reinterpret_cast<uintptr_t>(config);
+    if (val < 0x10000) return false;
+    // Show launcher menu only when the Devil May Cry title cutscene is over (substate >= 2, default game menu)
+    bool ready = (config[0] == 5 && config[1] >= 2 && g_menu_request.load() == 0);
+    static bool s_last_ready = false;
+    if (ready != s_last_ready) {
+        s_last_ready = ready;
+        log_line("mod_is_title_ready -> %d (state0=%u state1=%u req=%d)",
+                 ready ? 1 : 0, config[0], config[1], g_menu_request.load());
+    }
+    return ready;
+}
+
 void mod_begin_mission() {
     int mission = g_pending_mission.load();
     int mode = g_pending_mode.load();
@@ -816,6 +908,7 @@ void mod_begin_mission() {
         log_line("mission start %d ignored: only available from the title screen", mission);
         return;
     }
+    mod_patch_briefing_skip(true);
     g_hold_title.store(false);
     g_start_requested.store(true);
     g_menu_request.store(1);
@@ -833,6 +926,7 @@ void mod_clear_mission() {
 void mod_release_hold() {
     g_event_hold_enabled.store(false);
     g_hold_event.store(false);
+    g_hold_title.store(false);
     uint8_t* event = event_data();
     if (event && event[0] == 4) {
         event[0] = 0;

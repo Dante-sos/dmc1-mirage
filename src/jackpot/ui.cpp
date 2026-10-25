@@ -2,6 +2,7 @@
 #include "style.h"
 #include "style_hud.h"
 #include "style_assets.h"
+#include "launcher_assets.h"
 #include "style_trickster.h"
 #include "the_void_menu.h"
 
@@ -17,12 +18,14 @@
 #include <cstring>
 #include <vector>
 
-constexpr int kCell = 40;
+constexpr float kLogicalCell = 40.0f;
+constexpr int kAtlasCell = 160;
 constexpr int kCols = 16;
-constexpr int kAtlas = kCell * kCols;
-int g_glyph_w[95] = {};
-// Visual (ink bounding box) center of each glyph inside its atlas cell, in cell pixels.
-// Glyphs are drawn DT_LEFT, so the ink is NOT centered at (kCell/2, kCell/2).
+constexpr int kAtlas = kAtlasCell * kCols;
+constexpr float kFontRatio = static_cast<float>(kAtlasCell) / kLogicalCell;
+float g_glyph_w[95] = {};
+// Visual (ink bounding box) center of each glyph inside its atlas cell, in logical cell pixels.
+// Glyphs are drawn DT_LEFT, so the ink is NOT centered at (kLogicalCell/2, kLogicalCell/2).
 float g_glyph_cx[95] = {};
 float g_glyph_cy[95] = {};
 
@@ -85,7 +88,7 @@ int g_mission = 0;
 int g_mode = 1;
 
 enum class Screen { None, Launcher, Missions, BossRush, Settings, Title };
-Screen g_screen = Screen::Launcher;
+Screen g_screen = Screen::None;
 int g_launcher_index = 0;
 int g_title_index = 0;
 int g_game_index = 0;
@@ -98,7 +101,8 @@ bool g_setting_fast_dash = true;
 bool g_setting_quick_switch = true;
 int g_settings_row = 0;
 bool g_launcher_dismissed = false;
-std::atomic<bool> g_capture{true};
+bool g_mission_started = false;
+std::atomic<bool> g_capture{false};
 std::atomic<bool> g_inject_on{false};
 bool g_inject_keep = false;
 std::atomic<bool> g_wait_release{false};
@@ -137,6 +141,12 @@ ID3D11ShaderResourceView* g_font_view = nullptr;
 ID3D11ShaderResourceView* g_bg_view = nullptr;
 int g_bg_w = 0;
 int g_bg_h = 0;
+ID3D11ShaderResourceView* g_logo_view = nullptr;
+int g_logo_w = 0;
+int g_logo_h = 0;
+ID3D11ShaderResourceView* g_credits_view = nullptr;
+int g_credits_w = 0;
+int g_credits_h = 0;
 ID3D11Texture2D* g_probe = nullptr;
 bool g_probe_pending = false;
 int g_probe_w = 0;
@@ -163,6 +173,12 @@ void release_renderer() {
     drop(g_cb);
     drop(g_font_view);
     drop(g_bg_view);
+    drop(g_logo_view);
+    g_logo_w = 0;
+    g_logo_h = 0;
+    drop(g_credits_view);
+    g_credits_w = 0;
+    g_credits_h = 0;
     drop(g_probe);
     g_bg_w = 0;
     g_bg_h = 0;
@@ -229,40 +245,35 @@ bool build_font(ID3D11Device* device) {
     SetBkMode(dc, TRANSPARENT);
     SetTextColor(dc, RGB(255, 255, 255));
     DWORD num_fonts = 0;
-    AddFontMemResourceEx((void*)kDmc5FontBytes, static_cast<DWORD>(kDmc5FontSize), nullptr, &num_fonts);
-    AddFontResourceExW(L"fonts\\Heavy Metal Rocking.ttf", FR_PRIVATE, nullptr);
-    AddFontResourceExW(L"Heavy Metal Rocking.ttf", FR_PRIVATE, nullptr);
-    AddFontResourceExW(L"fonts\\berosong.regular.ttf", FR_PRIVATE, nullptr);
-    AddFontResourceExW(L"berosong.regular.ttf", FR_PRIVATE, nullptr);
-    HFONT font = CreateFontW(-19, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH, L"Heavy Metal Rocking");
+    HANDLE mem_font = AddFontMemResourceEx((void*)kDmc5FontOtfBytes, static_cast<DWORD>(kDmc5FontOtfBytesSize), nullptr, &num_fonts);
+    AddFontResourceExW(L"assets\\DMC5Font.otf", FR_PRIVATE, nullptr);
+    AddFontResourceExW(L"DMC5Font.otf", FR_PRIVATE, nullptr);
+    HFONT font = CreateFontW(-110, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_NATURAL_QUALITY, DEFAULT_PITCH, L"DMC5Font");
     if (!font) {
-        font = CreateFontW(-19, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH, L"Heavy Metal Rocking");
+        font = CreateFontW(-110, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_NATURAL_QUALITY, DEFAULT_PITCH, L"DMC5Font");
     }
     if (!font) {
-        font = CreateFontW(-28, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH, L"Berosong");
+        font = CreateFontW(-96, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_NATURAL_QUALITY, DEFAULT_PITCH, L"Berosong");
     }
     if (!font) {
-        font = CreateFontW(-34, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH, L"DMC5Font");
-    }
-    if (!font) {
-        font = CreateFontW(-32, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH, L"Times New Roman");
+        font = CreateFontW(-64, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_NATURAL_QUALITY, DEFAULT_PITCH, L"Heavy Metal Rocking");
     }
     HGDIOBJ old_font = SelectObject(dc, font);
     for (int ch = 32; ch <= 126; ++ch) {
         int cell = ch - 31;
         int col = cell % kCols;
         int row = cell / kCols;
-        RECT rect{col * kCell + 1, row * kCell - 1, (col + 1) * kCell, (row + 1) * kCell - 1};
+        RECT rect{col * kAtlasCell + 4, row * kAtlasCell - 2, (col + 1) * kAtlasCell, (row + 1) * kAtlasCell - 2};
         wchar_t text[2] = {static_cast<wchar_t>(ch), 0};
         DrawTextW(dc, text, 1, &rect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
         SIZE size{};
         GetTextExtentPoint32W(dc, text, 1, &size);
-        int width = size.cx + 1;
-        if (width < 4) {
-            width = 4;
+        float width = static_cast<float>(size.cx + 2) / kFontRatio;
+        if (width < 4.0f) {
+            width = 4.0f;
         }
-        if (width > kCell - 1) {
-            width = kCell - 1;
+        if (width > kLogicalCell - 1.0f) {
+            width = kLogicalCell - 1.0f;
         }
         g_glyph_w[ch - 32] = width;
     }
@@ -291,11 +302,11 @@ bool build_font(ID3D11Device* device) {
     }
     for (int ch = 32; ch <= 126; ++ch) {
         int cell = ch - 31;
-        int cx0 = (cell % kCols) * kCell;
-        int cy0 = (cell / kCols) * kCell;
-        int min_x = kCell, min_y = kCell, max_x = -1, max_y = -1;
-        for (int y = 0; y < kCell; ++y) {
-            for (int x = 0; x < kCell; ++x) {
+        int cx0 = (cell % kCols) * kAtlasCell;
+        int cy0 = (cell / kCols) * kAtlasCell;
+        int min_x = kAtlasCell, min_y = kAtlasCell, max_x = -1, max_y = -1;
+        for (int y = 0; y < kAtlasCell; ++y) {
+            for (int x = 0; x < kAtlasCell; ++x) {
                 if (pixels[((cy0 + y) * kAtlas + (cx0 + x)) * 4 + 3] > 32) {
                     if (x < min_x) min_x = x;
                     if (x > max_x) max_x = x;
@@ -305,11 +316,11 @@ bool build_font(ID3D11Device* device) {
             }
         }
         if (max_x >= 0) {
-            g_glyph_cx[ch - 32] = 0.5f * static_cast<float>(min_x + max_x + 1);
-            g_glyph_cy[ch - 32] = 0.5f * static_cast<float>(min_y + max_y + 1);
+            g_glyph_cx[ch - 32] = (0.5f * static_cast<float>(min_x + max_x + 1)) / kFontRatio;
+            g_glyph_cy[ch - 32] = (0.5f * static_cast<float>(min_y + max_y + 1)) / kFontRatio;
         } else {
-            g_glyph_cx[ch - 32] = kCell * 0.5f;
-            g_glyph_cy[ch - 32] = kCell * 0.5f;
+            g_glyph_cx[ch - 32] = kLogicalCell * 0.5f;
+            g_glyph_cy[ch - 32] = kLogicalCell * 0.5f;
         }
     }
     D3D11_TEXTURE2D_DESC desc{};
@@ -329,6 +340,7 @@ bool build_font(ID3D11Device* device) {
     SelectObject(dc, old_font);
     SelectObject(dc, old);
     DeleteObject(font);
+    if (mem_font) RemoveFontMemResourceEx(mem_font);
     DeleteObject(bitmap);
     DeleteDC(dc);
     if (FAILED(result)) {
@@ -340,55 +352,99 @@ bool build_font(ID3D11Device* device) {
 }
 
 void load_background(ID3D11Device* device) {
-    wchar_t path[MAX_PATH]{};
-    GetModuleFileNameW(nullptr, path, MAX_PATH);
-    wchar_t* slash = wcsrchr(path, L'\\');
-    if (!slash) {
-        return;
-    }
-    wcscpy(slash + 1, L"dmc1-mission-bg.jpg");
+    if (g_bg_view) return;
+
     struct GdiSession {
         ULONG_PTR token = 0;
         ~GdiSession() {
-            if (token) {
-                Gdiplus::GdiplusShutdown(token);
-            }
+            if (token) Gdiplus::GdiplusShutdown(token);
         }
     } session;
     Gdiplus::GdiplusStartupInput input;
     if (Gdiplus::GdiplusStartup(&session.token, &input, nullptr) != Gdiplus::Ok) {
-        session.token = 0;
         return;
     }
-    Gdiplus::Bitmap bitmap(path);
-    if (bitmap.GetLastStatus() != Gdiplus::Ok || bitmap.GetWidth() == 0) {
-        log_line("mission background missing");
+
+    Gdiplus::Bitmap* bitmap = nullptr;
+
+    // 1. Try embedded launcher background
+    HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, kLauncherBgBytesSize);
+    if (hMem) {
+        void* pMem = GlobalLock(hMem);
+        if (pMem) {
+            std::memcpy(pMem, kLauncherBgBytes, kLauncherBgBytesSize);
+            GlobalUnlock(hMem);
+            IStream* stream = nullptr;
+            if (SUCCEEDED(CreateStreamOnHGlobal(hMem, TRUE, &stream))) {
+                bitmap = new Gdiplus::Bitmap(stream);
+                stream->Release();
+            }
+        }
+    }
+
+    // 2. Disk fallbacks
+    if (!bitmap || bitmap->GetLastStatus() != Gdiplus::Ok || bitmap->GetWidth() == 0) {
+        delete bitmap;
+        bitmap = new Gdiplus::Bitmap(L"launcher bg 2.png");
+    }
+    if (!bitmap || bitmap->GetLastStatus() != Gdiplus::Ok || bitmap->GetWidth() == 0) {
+        delete bitmap;
+        bitmap = new Gdiplus::Bitmap(L"assets\\launcher bg 2.png");
+    }
+    if (!bitmap || bitmap->GetLastStatus() != Gdiplus::Ok || bitmap->GetWidth() == 0) {
+        delete bitmap;
+        bitmap = new Gdiplus::Bitmap(L"launcher-bg-default.jpg");
+    }
+    if (!bitmap || bitmap->GetLastStatus() != Gdiplus::Ok || bitmap->GetWidth() == 0) {
+        delete bitmap;
+        bitmap = new Gdiplus::Bitmap(L"assets\\launcher-bg-default.jpg");
+    }
+    if (!bitmap || bitmap->GetLastStatus() != Gdiplus::Ok || bitmap->GetWidth() == 0) {
+        delete bitmap;
+        bitmap = new Gdiplus::Bitmap(L"launcher-bg.jpg");
+    }
+    if (!bitmap || bitmap->GetLastStatus() != Gdiplus::Ok || bitmap->GetWidth() == 0) {
+        delete bitmap;
+        bitmap = new Gdiplus::Bitmap(L"assets\\launcher-bg.jpg");
+    }
+    if (!bitmap || bitmap->GetLastStatus() != Gdiplus::Ok || bitmap->GetWidth() == 0) {
+        delete bitmap;
+        bitmap = new Gdiplus::Bitmap(L"dmc1-mission-bg.jpg");
+    }
+    if (!bitmap || bitmap->GetLastStatus() != Gdiplus::Ok || bitmap->GetWidth() == 0) {
+        delete bitmap;
+        log_line("launcher background missing");
         return;
     }
-    Gdiplus::Rect rect(0, 0, static_cast<INT>(bitmap.GetWidth()), static_cast<INT>(bitmap.GetHeight()));
+
+    UINT bw = bitmap->GetWidth();
+    UINT bh = bitmap->GetHeight();
+    Gdiplus::Rect rect(0, 0, static_cast<INT>(bw), static_cast<INT>(bh));
     Gdiplus::BitmapData data{};
-    if (bitmap.LockBits(&rect, Gdiplus::ImageLockModeRead, PixelFormat32bppARGB, &data) != Gdiplus::Ok) {
+    if (bitmap->LockBits(&rect, Gdiplus::ImageLockModeRead, PixelFormat32bppARGB, &data) != Gdiplus::Ok) {
+        delete bitmap;
         return;
     }
-    std::vector<uint8_t> pixels(static_cast<size_t>(data.Width) * data.Height * 4);
-    for (UINT y = 0; y < data.Height; ++y) {
+
+    std::vector<uint8_t> pixels(static_cast<size_t>(bw) * bh * 4);
+    for (UINT y = 0; y < bh; ++y) {
         auto* src = static_cast<uint8_t*>(data.Scan0) + y * data.Stride;
-        uint8_t* dst = pixels.data() + static_cast<size_t>(y) * data.Width * 4;
-        for (UINT x = 0; x < data.Width; ++x) {
+        uint8_t* dst = pixels.data() + static_cast<size_t>(y) * bw * 4;
+        for (UINT x = 0; x < bw; ++x) {
             dst[x * 4 + 0] = src[x * 4 + 2];
             dst[x * 4 + 1] = src[x * 4 + 1];
             dst[x * 4 + 2] = src[x * 4 + 0];
             dst[x * 4 + 3] = 255;
         }
     }
-    g_bg_w = static_cast<int>(data.Width);
-    g_bg_h = static_cast<int>(data.Height);
-    bitmap.UnlockBits(&data);
-    UINT bg_w = data.Width;
-    UINT bg_h = data.Height;
+    g_bg_w = static_cast<int>(bw);
+    g_bg_h = static_cast<int>(bh);
+    bitmap->UnlockBits(&data);
+    delete bitmap;
+
     D3D11_TEXTURE2D_DESC desc{};
-    desc.Width = bg_w;
-    desc.Height = bg_h;
+    desc.Width = bw;
+    desc.Height = bh;
     desc.MipLevels = 1;
     desc.ArraySize = 1;
     desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -397,17 +453,181 @@ void load_background(ID3D11Device* device) {
     desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
     D3D11_SUBRESOURCE_DATA sub{};
     sub.pSysMem = pixels.data();
-    sub.SysMemPitch = bg_w * 4;
+    sub.SysMemPitch = bw * 4;
+
     ID3D11Texture2D* texture = nullptr;
-    HRESULT result = device->CreateTexture2D(&desc, &sub, &texture);
-    if (FAILED(result)) {
-        log_line("mission background texture failed");
+    if (SUCCEEDED(device->CreateTexture2D(&desc, &sub, &texture))) {
+        device->CreateShaderResourceView(texture, nullptr, &g_bg_view);
+        texture->Release();
+        log_line("launcher background ready %dx%d", g_bg_w, g_bg_h);
+    }
+}
+
+void load_logo(ID3D11Device* device) {
+    if (g_logo_view) return;
+
+    struct GdiSession {
+        ULONG_PTR token = 0;
+        ~GdiSession() {
+            if (token) Gdiplus::GdiplusShutdown(token);
+        }
+    } session;
+    Gdiplus::GdiplusStartupInput input;
+    if (Gdiplus::GdiplusStartup(&session.token, &input, nullptr) != Gdiplus::Ok) {
         return;
     }
-    result = device->CreateShaderResourceView(texture, nullptr, &g_bg_view);
-    texture->Release();
-    if (SUCCEEDED(result)) {
-        log_line("mission background ready %dx%d", g_bg_w, g_bg_h);
+
+    Gdiplus::Bitmap* bitmap = nullptr;
+
+    // 1. Try embedded cropped logo memory stream
+    HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, kMirageLogoBytesSize);
+    if (hMem) {
+        void* pMem = GlobalLock(hMem);
+        if (pMem) {
+            std::memcpy(pMem, kMirageLogoBytes, kMirageLogoBytesSize);
+            GlobalUnlock(hMem);
+            IStream* stream = nullptr;
+            if (SUCCEEDED(CreateStreamOnHGlobal(hMem, TRUE, &stream))) {
+                bitmap = new Gdiplus::Bitmap(stream);
+                stream->Release();
+            }
+        }
+    }
+
+    // 2. Disk fallbacks
+    if (!bitmap || bitmap->GetLastStatus() != Gdiplus::Ok || bitmap->GetWidth() == 0) {
+        delete bitmap;
+        bitmap = new Gdiplus::Bitmap(L"mirage logo.png");
+    }
+    if (!bitmap || bitmap->GetLastStatus() != Gdiplus::Ok || bitmap->GetWidth() == 0) {
+        delete bitmap;
+        bitmap = new Gdiplus::Bitmap(L"assets\\mirage logo.png");
+    }
+    if (!bitmap || bitmap->GetLastStatus() != Gdiplus::Ok || bitmap->GetWidth() == 0) {
+        delete bitmap;
+        log_line("mirage logo missing");
+        return;
+    }
+
+    UINT bw = bitmap->GetWidth();
+    UINT bh = bitmap->GetHeight();
+    Gdiplus::Rect rect(0, 0, static_cast<INT>(bw), static_cast<INT>(bh));
+    Gdiplus::BitmapData data{};
+    if (bitmap->LockBits(&rect, Gdiplus::ImageLockModeRead, PixelFormat32bppARGB, &data) != Gdiplus::Ok) {
+        delete bitmap;
+        return;
+    }
+
+    std::vector<uint8_t> pixels(static_cast<size_t>(bw) * bh * 4);
+    for (UINT y = 0; y < bh; ++y) {
+        auto* src = static_cast<uint8_t*>(data.Scan0) + y * data.Stride;
+        uint8_t* dst = pixels.data() + static_cast<size_t>(y) * bw * 4;
+        for (UINT x = 0; x < bw; ++x) {
+            dst[x * 4 + 0] = src[x * 4 + 2]; // R
+            dst[x * 4 + 1] = src[x * 4 + 1]; // G
+            dst[x * 4 + 2] = src[x * 4 + 0]; // B
+            dst[x * 4 + 3] = src[x * 4 + 3]; // A
+        }
+    }
+    g_logo_w = static_cast<int>(bw);
+    g_logo_h = static_cast<int>(bh);
+    bitmap->UnlockBits(&data);
+    delete bitmap;
+
+    D3D11_TEXTURE2D_DESC desc{};
+    desc.Width = bw;
+    desc.Height = bh;
+    desc.MipLevels = 1;
+    desc.ArraySize = 1;
+    desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    desc.SampleDesc.Count = 1;
+    desc.Usage = D3D11_USAGE_IMMUTABLE;
+    desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    D3D11_SUBRESOURCE_DATA sub{};
+    sub.pSysMem = pixels.data();
+    sub.SysMemPitch = bw * 4;
+
+    ID3D11Texture2D* texture = nullptr;
+    if (SUCCEEDED(device->CreateTexture2D(&desc, &sub, &texture))) {
+        device->CreateShaderResourceView(texture, nullptr, &g_logo_view);
+        texture->Release();
+        log_line("mirage logo ready %dx%d", g_logo_w, g_logo_h);
+    }
+}
+
+void load_credits(ID3D11Device* device) {
+    if (g_credits_view) return;
+
+    int w = 488;
+    int h = 200;
+    BITMAPINFO info{};
+    info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    info.bmiHeader.biWidth = w;
+    info.bmiHeader.biHeight = -h;
+    info.bmiHeader.biPlanes = 1;
+    info.bmiHeader.biBitCount = 32;
+    info.bmiHeader.biCompression = BI_RGB;
+    void* bits = nullptr;
+    HDC dc = CreateCompatibleDC(nullptr);
+    HBITMAP bitmap = CreateDIBSection(dc, &info, DIB_RGB_COLORS, &bits, nullptr, 0);
+    if (!bitmap || !bits) {
+        if (dc) DeleteDC(dc);
+        return;
+    }
+    HGDIOBJ old_bmp = SelectObject(dc, bitmap);
+    RECT all{0, 0, w, h};
+    HBRUSH black = CreateSolidBrush(RGB(0, 0, 0));
+    FillRect(dc, &all, black);
+    DeleteObject(black);
+    SetBkMode(dc, TRANSPARENT);
+    SetTextColor(dc, RGB(255, 255, 255));
+
+    AddFontResourceExW(L"C:\\Windows\\Fonts\\LHANDW.TTF", FR_PRIVATE, nullptr);
+    HFONT font = CreateFontW(-64, 0, 0, 0, FW_NORMAL, TRUE, FALSE, FALSE, DEFAULT_CHARSET,
+                             OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY,
+                             DEFAULT_PITCH, L"Lucida Handwriting");
+    HGDIOBJ old_font = font ? SelectObject(dc, font) : nullptr;
+
+    TextOutW(dc, 16, 16, L"a mod by", 8);
+    TextOutW(dc, 120, 110, L"Dante", 5);
+    GdiFlush();
+
+    std::vector<uint8_t> pixels(static_cast<size_t>(w) * h * 4);
+    auto* src = static_cast<uint8_t*>(bits);
+    for (int i = 0; i < w * h; ++i) {
+        uint8_t lum = std::max(src[i * 4 + 0], std::max(src[i * 4 + 1], src[i * 4 + 2]));
+        pixels[i * 4 + 0] = 255;
+        pixels[i * 4 + 1] = 255;
+        pixels[i * 4 + 2] = 255;
+        pixels[i * 4 + 3] = lum;
+    }
+
+    if (old_font) SelectObject(dc, old_font);
+    if (font) DeleteObject(font);
+    SelectObject(dc, old_bmp);
+    DeleteObject(bitmap);
+    DeleteDC(dc);
+
+    D3D11_TEXTURE2D_DESC desc{};
+    desc.Width = w;
+    desc.Height = h;
+    desc.MipLevels = 1;
+    desc.ArraySize = 1;
+    desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    desc.SampleDesc.Count = 1;
+    desc.Usage = D3D11_USAGE_IMMUTABLE;
+    desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    D3D11_SUBRESOURCE_DATA sub{};
+    sub.pSysMem = pixels.data();
+    sub.SysMemPitch = w * 4;
+
+    ID3D11Texture2D* texture = nullptr;
+    if (SUCCEEDED(device->CreateTexture2D(&desc, &sub, &texture))) {
+        device->CreateShaderResourceView(texture, nullptr, &g_credits_view);
+        texture->Release();
+        g_credits_w = w;
+        g_credits_h = h;
+        log_line("credits texture ready %dx%d", g_credits_w, g_credits_h);
     }
 }
 
@@ -485,6 +705,8 @@ float4 ps_main(Vout i) : SV_TARGET {
         return false;
     }
     load_background(device);
+    load_logo(device);
+    load_credits(device);
     style_hud_load_assets(device);
     g_ready = true;
     log_line("overlay renderer ready");
@@ -623,6 +845,21 @@ void push_quad(std::vector<Vertex>& verts, float x, float y, float w, float h, f
     verts.insert(verts.end(), q, q + 6);
 }
 
+void push_quad_gradient(std::vector<Vertex>& verts, float x, float y, float w, float h,
+                        float u0, float v0, float u1, float v1,
+                        float r0, float g0, float b0, float a0,
+                        float r1, float g1, float b1, float a1) {
+    const Vertex q[6] = {
+        {x, y, u0, v0, r0, g0, b0, a0},
+        {x + w, y, u1, v0, r0, g0, b0, a0},
+        {x, y + h, u0, v1, r1, g1, b1, a1},
+        {x, y + h, u0, v1, r1, g1, b1, a1},
+        {x + w, y, u1, v0, r0, g0, b0, a0},
+        {x + w, y + h, u1, v1, r1, g1, b1, a1},
+    };
+    verts.insert(verts.end(), q, q + 6);
+}
+
 void draw_rect(std::vector<Vertex>& verts, float x, float y, float w, float h, float r, float g, float b, float a) {
     float u = 4.0f / static_cast<float>(kAtlas);
     push_quad(verts, x, y, w, h, u, u, u, u, r, g, b, a);
@@ -632,36 +869,62 @@ float text_width(const char* text, float scale, float tracking) {
     float width = 0;
     for (const char* ch = text; *ch; ++ch) {
         unsigned char value = static_cast<unsigned char>(*ch);
-        int advance = (value >= 32 && value <= 126) ? g_glyph_w[value - 32] : kCell / 2;
-        if (advance <= 0) {
-            advance = kCell / 2;
+        float advance = (value >= 32 && value <= 126) ? g_glyph_w[value - 32] : kLogicalCell * 0.5f;
+        if (advance <= 0.0f) {
+            advance = kLogicalCell * 0.5f;
         }
-        width += static_cast<float>(advance) * scale + tracking;
+        width += advance * scale + tracking;
     }
     return width;
 }
 
 void draw_text(std::vector<Vertex>& verts, float x, float y, const char* text, float scale, float tracking, float r, float g, float b, float a) {
     float cursor = x;
-    float size = static_cast<float>(kCell) * scale;
+    float size = kLogicalCell * scale;
     for (const char* ch = text; *ch; ++ch) {
         unsigned char value = static_cast<unsigned char>(*ch);
-        int advance = kCell / 2;
+        float advance = kLogicalCell * 0.5f;
         if (value >= 32 && value <= 126) {
             int cell = value - 31;
             int col = cell % kCols;
             int row = cell / kCols;
-            float u0 = static_cast<float>(col * kCell) / kAtlas;
-            float v0 = static_cast<float>(row * kCell) / kAtlas;
-            float u1 = static_cast<float>((col + 1) * kCell) / kAtlas;
-            float v1 = static_cast<float>((row + 1) * kCell) / kAtlas;
+            float u0 = static_cast<float>(col * kAtlasCell) / static_cast<float>(kAtlas);
+            float v0 = static_cast<float>(row * kAtlasCell) / static_cast<float>(kAtlas);
+            float u1 = static_cast<float>((col + 1) * kAtlasCell) / static_cast<float>(kAtlas);
+            float v1 = static_cast<float>((row + 1) * kAtlasCell) / static_cast<float>(kAtlas);
             push_quad(verts, cursor, y, size, size, u0, v0, u1, v1, r, g, b, a);
             advance = g_glyph_w[value - 32];
-            if (advance <= 0) {
-                advance = kCell / 2;
+            if (advance <= 0.0f) {
+                advance = kLogicalCell * 0.5f;
             }
         }
-        cursor += static_cast<float>(advance) * scale + tracking;
+        cursor += advance * scale + tracking;
+    }
+}
+
+void draw_text_gradient(std::vector<Vertex>& verts, float x, float y, const char* text, float scale, float tracking,
+                        float r0, float g0, float b0, float a0,
+                        float r1, float g1, float b1, float a1) {
+    float cursor = x;
+    float size = kLogicalCell * scale;
+    for (const char* ch = text; *ch; ++ch) {
+        unsigned char value = static_cast<unsigned char>(*ch);
+        float advance = kLogicalCell * 0.5f;
+        if (value >= 32 && value <= 126) {
+            int cell = value - 31;
+            int col = cell % kCols;
+            int row = cell / kCols;
+            float u0 = static_cast<float>(col * kAtlasCell) / static_cast<float>(kAtlas);
+            float v0 = static_cast<float>(row * kAtlasCell) / static_cast<float>(kAtlas);
+            float u1 = static_cast<float>((col + 1) * kAtlasCell) / static_cast<float>(kAtlas);
+            float v1 = static_cast<float>((row + 1) * kAtlasCell) / static_cast<float>(kAtlas);
+            push_quad_gradient(verts, cursor, y, size, size, u0, v0, u1, v1, r0, g0, b0, a0, r1, g1, b1, a1);
+            advance = g_glyph_w[value - 32];
+            if (advance <= 0.0f) {
+                advance = kLogicalCell * 0.5f;
+            }
+        }
+        cursor += advance * scale + tracking;
     }
 }
 
@@ -760,25 +1023,13 @@ void draw_background(std::vector<Vertex>& verts, float width, float height) {
     push_quad(verts, 0, 0, width, height, u0, v0, u1, v1, 1, 1, 1, 1);
 }
 
-constexpr int kLauncherItemCount = 7;
+constexpr int kLauncherItemCount = 5;
 const char* kLauncherItems[kLauncherItemCount] = {
     "LOAD DATA",
     "MISSION SELECT",
     "THE VOID",
     "BOSS RUSH",
-    "SETTINGS",
-    "START GAME",
-    "EXIT TO HD COLLECTION"
-};
-
-const char* kLauncherSubtext[kLauncherItemCount] = {
-    "Load saved game data and resume your adventure.",
-    "Select any mission from 1 to 23 and choose difficulty.",
-    "Combo practice in the Mission 8 arena with infinite HP and Devil Trigger.",
-    "Consecutive boss trial against all bosses in DMC1.",
-    "Style Switcher key bindings, HUD display, and controls.",
-    "Start a new game from the prologue.",
-    "Quit Devil May Cry 1 and return to HD Collection launcher."
+    "SETTINGS"
 };
 
 const char* kTitleItems[] = {"LOAD DATA", "MISSION SELECT", "NEW GAME", "OPTION"};
@@ -786,122 +1037,143 @@ constexpr float kTitleRows[] = {0.662f, 0.735f, 0.808f, 0.881f};
 
 void draw_launcher_menu(float width, float height) {
     std::vector<Vertex> verts;
-    verts.reserve(5000);
+    verts.reserve(2048);
 
+    // 1. Cinematic Background: Dante leaning on Force Edge
     if (g_bg_view) {
         draw_background(verts, width, height);
         submit(verts, width, height, 1.0f, g_bg_view);
     } else {
-        draw_rect(verts, 0, 0, width, height, 0.05f, 0.02f, 0.02f, 1.0f);
+        draw_rect(verts, 0, 0, width, height, 0.02f, 0.01f, 0.02f, 1.0f);
         submit(verts, width, height, 0.0f, g_font_view);
     }
 
-    // Dark gothic vignette overlay
-    draw_rect(verts, 0, 0, width, height, 0.02f, 0.01f, 0.02f, 0.70f);
+    struct LauncherProfile {
+        float logo_w, logo_h;
+        float logo_y;
+        float row_centers[kLauncherItemCount];
+        float item_scale;
+        float tracking;
+        float cred_w, cred_h;
+        float cred_margin_r, cred_margin_b;
+    };
 
-    float scale = height / 900.0f;
-    if (scale < 0.65f) scale = 0.65f;
-    if (scale > 1.55f) scale = 1.55f;
+    LauncherProfile profile{};
 
-    // Top Accent Banner
-    draw_rect(verts, 0, 0, width, 4.0f * scale, 0.85f, 0.12f, 0.18f, 1.0f);
+    if (height >= 1800.0f) {
+        // 4K Profile (3840x2160 / UHD)
+        float rh = height / 2160.0f;
+        profile.logo_w = 1688.0f * rh;
+        profile.logo_h = 768.0f * rh;
+        profile.logo_y = 228.0f * rh;
+        const float rows[kLauncherItemCount] = { 1287.0f, 1448.0f, 1611.0f, 1773.0f, 1928.0f };
+        for (int i = 0; i < kLauncherItemCount; ++i) profile.row_centers[i] = rows[i] * rh;
+        profile.item_scale = 4.05f * rh;
+        profile.tracking = 1.80f * rh;
+        profile.cred_w = 366.0f * rh;
+        profile.cred_h = 150.0f * rh;
+        profile.cred_margin_r = 78.0f * rh;
+        profile.cred_margin_b = 45.0f * rh;
+    } else if (height >= 1300.0f) {
+        // 1440p Profile (2560x1440 / QHD) - exact replica of pics/launcher-2560x1440.jpg and pics/launcher.jpg
+        float rh = height / 1440.0f;
+        profile.logo_w = 1125.0f * rh;
+        profile.logo_h = 512.0f * rh;
+        profile.logo_y = 152.0f * rh;
+        const float rows[kLauncherItemCount] = { 858.0f, 966.0f, 1074.0f, 1182.0f, 1286.0f };
+        for (int i = 0; i < kLauncherItemCount; ++i) profile.row_centers[i] = rows[i] * rh;
+        profile.item_scale = 2.70f * rh;
+        profile.tracking = 1.20f * rh;
+        profile.cred_w = 244.0f * rh;
+        profile.cred_h = 100.0f * rh;
+        profile.cred_margin_r = 52.0f * rh;
+        profile.cred_margin_b = 30.0f * rh;
+    } else if (height >= 950.0f) {
+        // 1080p Profile (1920x1080 / FHD) - exact replica of pics/launcher-1920x1080.jpg
+        float rh = height / 1080.0f;
+        profile.logo_w = 844.0f * rh;
+        profile.logo_h = 384.0f * rh;
+        profile.logo_y = 114.0f * rh;
+        const float rows[kLauncherItemCount] = { 644.0f, 724.0f, 805.0f, 886.0f, 964.0f };
+        for (int i = 0; i < kLauncherItemCount; ++i) profile.row_centers[i] = rows[i] * rh;
+        profile.item_scale = 2.02f * rh;
+        profile.tracking = 0.90f * rh;
+        profile.cred_w = 183.0f * rh;
+        profile.cred_h = 75.0f * rh;
+        profile.cred_margin_r = 39.0f * rh;
+        profile.cred_margin_b = 22.5f * rh;
+    } else {
+        // 720p / 800p Profile (1280x720 / 1280x800 Steam Deck / HD) - matching pics/launcher.jpg
+        float rh = height / 720.0f;
+        profile.logo_w = 562.0f * rh;
+        profile.logo_h = 256.0f * rh;
+        profile.logo_y = 76.0f * rh;
+        const float rows[kLauncherItemCount] = { 429.0f, 483.0f, 537.0f, 591.0f, 643.0f };
+        for (int i = 0; i < kLauncherItemCount; ++i) profile.row_centers[i] = rows[i] * rh;
+        profile.item_scale = 1.35f * rh;
+        profile.tracking = 0.60f * rh;
+        profile.cred_w = 122.0f * rh;
+        profile.cred_h = 50.0f * rh;
+        profile.cred_margin_r = 26.0f * rh;
+        profile.cred_margin_b = 15.0f * rh;
+    }
 
-    // Header Title
-    const char* title_main = "DEVIL MAY CRY";
-    const char* title_sub = "MIRAGE LAUNCHER  //  STYLE SWITCH EDITION";
+    // 2. Mod Logo: "Devil may Cry MIRAGE" + red Lady silhouette
+    if (g_logo_view && g_logo_w > 0 && g_logo_h > 0) {
+        float logo_x = (width - profile.logo_w) * 0.5f;
+        float logo_y = profile.logo_y;
+        push_quad(verts, logo_x, logo_y, profile.logo_w, profile.logo_h, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f);
+        submit(verts, width, height, 1.0f, g_logo_view);
+    }
 
-    float title_scale = scale * 0.95f;
-    float title_track = 1.6f * scale;
-    float title_w = text_width(title_main, title_scale, title_track);
-    float title_x = (width - title_w) * 0.5f;
-    float title_y = height * 0.065f;
-    draw_text_outlined(verts, title_x, title_y, title_main, title_scale, title_track, 0.98f, 0.92f, 0.84f, 1.0f);
+    // 3. Menu Options rendered with DMC5Font.otf and authentic vertical gradients
+    DWORD now = GetTickCount();
+    float pulse = 0.88f + 0.12f * std::sin(static_cast<float>(now % 800) / 800.0f * 6.28318f);
 
-    float sub_scale = scale * 0.38f;
-    float sub_track = 1.1f * scale;
-    float sub_w = text_width(title_sub, sub_scale, sub_track);
-    float sub_x = (width - sub_w) * 0.5f;
-    float sub_y = title_y + 42.0f * scale;
-    draw_text(verts, sub_x, sub_y, title_sub, sub_scale, sub_track, 0.88f, 0.20f, 0.22f, 1.0f);
-
-    // Decorative separator bar under title
-    float sep_w = width * 0.55f;
-    float sep_x = (width - sep_w) * 0.5f;
-    float sep_y = sub_y + 24.0f * scale;
-    draw_rect(verts, sep_x, sep_y, sep_w, 1.5f * scale, 0.75f, 0.18f, 0.20f, 0.70f);
-
-    // Center Menu Card
-    float card_w = width * 0.44f;
-    if (card_w < 440.0f * scale) card_w = 440.0f * scale;
-    float card_h = height * 0.62f;
-    float card_x = (width - card_w) * 0.5f;
-    float card_y = sep_y + 18.0f * scale;
-
-    // Card background panel
-    draw_rect(verts, card_x, card_y, card_w, card_h, 0.02f, 0.02f, 0.03f, 0.84f);
-    // Card crimson top accent line
-    draw_rect(verts, card_x, card_y, card_w, 2.5f * scale, 0.85f, 0.12f, 0.18f, 0.95f);
-    // Border lines
-    draw_rect(verts, card_x, card_y, 1.0f * scale, card_h, 0.25f, 0.08f, 0.10f, 0.60f);
-    draw_rect(verts, card_x + card_w - 1.0f * scale, card_y, 1.0f * scale, card_h, 0.25f, 0.08f, 0.10f, 0.60f);
-
-    // Menu Items
-    float item_area_top = card_y + 24.0f * scale;
-    float item_area_h = card_h - 100.0f * scale;
-    float row_h = item_area_h / static_cast<float>(kLauncherItemCount);
-    float row_y = item_area_top;
-    float item_scale = scale * 0.48f;
-    float item_track = 0.90f * scale;
+    float shadow_offset = 2.5f * (height / 1080.0f);
+    if (shadow_offset < 1.0f) shadow_offset = 1.0f;
 
     for (int i = 0; i < kLauncherItemCount; ++i) {
         bool selected = (i == g_launcher_index);
-        float text_y = row_y + (row_h - 32.0f * item_scale) * 0.5f;
+        float tw = text_width(kLauncherItems[i], profile.item_scale, profile.tracking);
+        float tx = (width - tw) * 0.5f;
+        float ty = profile.row_centers[i] - 18.0f * profile.item_scale;
+
+        // Soft black drop shadow matching launcher.jpg
+        draw_text(verts, tx + shadow_offset, ty + shadow_offset, kLauncherItems[i], profile.item_scale, profile.tracking, 0.0f, 0.0f, 0.0f, 0.85f);
 
         if (selected) {
-            draw_rect(verts, card_x + 14.0f * scale, row_y + 2.0f * scale, card_w - 28.0f * scale, row_h - 4.0f * scale, 0.60f, 0.08f, 0.10f, 0.92f);
-            draw_rect(verts, card_x + 14.0f * scale, row_y + 2.0f * scale, 3.5f * scale, row_h - 4.0f * scale, 1.0f, 0.85f, 0.30f, 1.0f);
-
-            char label[64];
-            std::snprintf(label, sizeof(label), ">   %s", kLauncherItems[i]);
-            draw_text_outlined(verts, card_x + 30.0f * scale, text_y, label, item_scale, item_track, 1.0f, 0.98f, 0.92f, 1.0f);
-
-            if (i == 2) {
-                float rw = text_width(label, item_scale, item_track);
-                draw_text(verts, card_x + 34.0f * scale + rw, text_y + 2.0f * scale, "[COMBO ARENA]", item_scale * 0.78f, item_track * 0.8f, 1.0f, 0.82f, 0.32f, 1.0f);
-            } else if (i == 3) {
-                float rw = text_width(label, item_scale, item_track);
-                draw_text(verts, card_x + 34.0f * scale + rw, text_y + 2.0f * scale, "[COMING SOON]", item_scale * 0.78f, item_track * 0.8f, 1.0f, 0.78f, 0.25f, 1.0f);
-            }
+            // Selected item: vibrant fiery crimson top to deep dark ruby bottom with subtle pulse
+            float r0 = 0.98f;
+            float g0 = 0.22f * pulse;
+            float b0 = 0.16f * pulse;
+            float r1 = 0.48f;
+            float g1 = 0.04f * pulse;
+            float b1 = 0.05f * pulse;
+            draw_text_gradient(verts, tx, ty, kLauncherItems[i], profile.item_scale, profile.tracking,
+                               r0, g0, b0, 1.0f,
+                               r1, g1, b1, 1.0f);
         } else {
-            draw_text(verts, card_x + 38.0f * scale, text_y, kLauncherItems[i], item_scale, item_track, 0.72f, 0.68f, 0.65f, 1.0f);
-            if (i == 2) {
-                float rw = text_width(kLauncherItems[i], item_scale, item_track);
-                draw_text(verts, card_x + 46.0f * scale + rw, text_y + 2.0f * scale, "[COMBO ARENA]", item_scale * 0.78f, item_track * 0.8f, 0.82f, 0.68f, 0.25f, 0.85f);
-            } else if (i == 3) {
-                float rw = text_width(kLauncherItems[i], item_scale, item_track);
-                draw_text(verts, card_x + 46.0f * scale + rw, text_y + 2.0f * scale, "[COMING SOON]", item_scale * 0.78f, item_track * 0.8f, 0.75f, 0.55f, 0.20f, 0.8f);
-            }
+            // Unselected items: metallic silver gradient (steel silver top to bright chrome bottom) matching launcher.jpg
+            draw_text_gradient(verts, tx, ty, kLauncherItems[i], profile.item_scale, profile.tracking,
+                               0.75f, 0.75f, 0.78f, 0.95f,
+                               1.00f, 1.00f, 1.00f, 1.00f);
         }
-
-        row_y += row_h;
     }
-
-    // Context / Subtext Box at bottom of card
-    float subbox_y = card_y + card_h - 68.0f * scale;
-    draw_rect(verts, card_x + 18.0f * scale, subbox_y, card_w - 36.0f * scale, 1.0f * scale, 0.50f, 0.15f, 0.18f, 0.60f);
-
-    float desc_scale = scale * 0.36f;
-    float desc_track = 0.5f * scale;
-    draw_text(verts, card_x + 24.0f * scale, subbox_y + 16.0f * scale, kLauncherSubtext[g_launcher_index], desc_scale, desc_track, 0.85f, 0.80f, 0.65f, 1.0f);
-
-    // Footer prompt
-    const char* footer = "[D-PAD / UP-DOWN] Navigate     [A / ENTER] Select     [F7] In-Game Menu";
-    float foot_scale = scale * 0.34f;
-    float foot_track = 0.6f * scale;
-    float foot_w = text_width(footer, foot_scale, foot_track);
-    draw_text(verts, (width - foot_w) * 0.5f, height * 0.94f, footer, foot_scale, foot_track, 0.60f, 0.58f, 0.55f, 1.0f);
-
     submit(verts, width, height, 0.0f, g_font_view);
+
+    // 4. Credits: "a mod by Dante" in Lucida Handwriting
+    if (g_credits_view) {
+        float cred_x = width - profile.cred_w - profile.cred_margin_r;
+        float cred_y = height - profile.cred_h - profile.cred_margin_b;
+        float cred_shadow = 1.5f * (height / 1080.0f);
+        if (cred_shadow < 1.0f) cred_shadow = 1.0f;
+        // Soft shadow
+        push_quad(verts, cred_x + cred_shadow, cred_y + cred_shadow, profile.cred_w, profile.cred_h, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.65f);
+        // Clean white script
+        push_quad(verts, cred_x, cred_y, profile.cred_w, profile.cred_h, 0.0f, 0.0f, 1.0f, 1.0f, 0.95f, 0.95f, 0.98f, 0.95f);
+        submit(verts, width, height, 1.0f, g_credits_view);
+    }
 }
 
 void draw_boss_rush_screen(float width, float height) {
@@ -1115,7 +1387,7 @@ void draw_mission_screen(float width, float height) {
     float list_top = panel_y + 58;
     float list_bottom = panel_y + panel_h - 88;
     float row_h = (list_bottom - list_top) / static_cast<float>(kMissionCount);
-    float row_scale = (row_h - 4.0f) / static_cast<float>(kCell);
+    float row_scale = (row_h - 4.0f) / kLogicalCell;
     if (row_scale > scale * 0.48f) {
         row_scale = scale * 0.48f;
     }
@@ -1301,7 +1573,7 @@ void finish_load_seek() {
 }
 
 void show_launcher(bool force = false) {
-    if (g_launcher_dismissed && !force) {
+    if (g_mission_started && !force) {
         return;
     }
     g_launcher_index = 0;
@@ -1572,6 +1844,7 @@ void update_menu_input() {
         return;
     }
     if (reopen) {
+        g_mission_started = false;
         show_launcher(true);
         return;
     }
@@ -1592,10 +1865,13 @@ void update_menu_input() {
         if (down && g_launcher_index < kLauncherItemCount - 1) {
             g_launcher_index++;
         }
+        if (close) {
+            // Main launcher is the title menu - do not dismiss to reveal in-game menu!
+            return;
+        }
         if (confirm) {
             switch (g_launcher_index) {
                 case 0: // LOAD DATA
-                    g_launcher_dismissed = true;
                     mod_clear_mission();
                     mod_release_hold();
                     mod_open_load_menu();
@@ -1608,11 +1884,11 @@ void update_menu_input() {
                     g_menu_lock = 12;
                     break;
                 case 2: // THE VOID
+                    g_mission_started = true;
                     g_launcher_dismissed = true;
                     mod_arm_the_void(kModeValues[g_mode]);
                     g_screen = Screen::None;
                     g_capture.store(false);
-                    g_probe_cooldown = 45;
                     g_wait_release.store(true);
                     mod_begin_mission();
                     break;
@@ -1623,17 +1899,6 @@ void update_menu_input() {
                 case 4: // SETTINGS
                     g_screen = Screen::Settings;
                     g_menu_lock = 10;
-                    break;
-                case 5: // START GAME
-                    g_launcher_dismissed = true;
-                    mod_arm_mission(1, kModeValues[g_mode]);
-                    g_screen = Screen::None;
-                    g_capture.store(false);
-                    g_wait_release.store(true);
-                    mod_begin_mission();
-                    break;
-                case 6: // EXIT TO HD COLLECTION
-                    ExitProcess(0);
                     break;
             }
         }
@@ -1687,11 +1952,11 @@ void update_menu_input() {
         move_mode(1);
     }
     if (confirm) {
+        g_mission_started = true;
         g_launcher_dismissed = true;
         mod_arm_mission(g_mission + 1, kModeValues[g_mode]);
         g_screen = Screen::None;
         g_capture.store(false);
-        g_probe_cooldown = 45;
         g_wait_release.store(true);
         mod_begin_mission();
         return;
@@ -1771,24 +2036,42 @@ void paint(IDXGISwapChain* swap) {
     }
     tick_inject();
     tick_seek();
-    if (g_probe_cooldown > 0) {
-        g_probe_cooldown--;
-    }
-    consume_probe();
     update_menu_input();
+
+    static bool prev_in_game = false;
+    bool in_game_now = mod_in_game();
+    if (prev_in_game && !in_game_now) {
+        // Player returned to title from gameplay
+        g_mission_started = false;
+        g_launcher_dismissed = false;
+        mod_release_hold();
+    }
+    prev_in_game = in_game_now;
+
+    // Show launcher menu only when opening cutscenes get over (title ready after 2nd cutscene)
+    if (mod_is_title_ready()) {
+        g_mission_started = false;
+        if (g_screen == Screen::None) {
+            show_launcher(true);
+        }
+    } else if (in_game_now) {
+        g_mission_started = true;
+        if (g_screen == Screen::Launcher || g_screen == Screen::Title) {
+            g_screen = Screen::None;
+            g_capture.store(false);
+        }
+    }
+
+    if (g_screen == Screen::None && !in_game_now) {
+        return;
+    }
+
     ID3D11Texture2D* back = nullptr;
     if (FAILED(swap->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&back)))) {
         return;
     }
     D3D11_TEXTURE2D_DESC desc{};
     back->GetDesc(&desc);
-    if (!g_inject_on.load() && g_probe_cooldown == 0 && !g_probe_pending) {
-        queue_probe(back, desc);
-    }
-    if (g_screen == Screen::None && !mod_in_game()) {
-        back->Release();
-        return;
-    }
     ID3D11RenderTargetView* rtv = nullptr;
     HRESULT rtv_result = g_device->CreateRenderTargetView(back, nullptr, &rtv);
     back->Release();

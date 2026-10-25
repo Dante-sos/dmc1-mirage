@@ -1,10 +1,23 @@
+<p align="center">
+  <img src="assets/mirage%20logo.png" alt="Devil May Cry Mirage" width="560"/>
+</p>
+
 # DMC1 Mirage
 
-Style switching, weapon switching, training arena (The Void), and mission select for Devil May Cry 1 in the HD Collection (inspired by DMC3 Crimson).
+A comprehensive modern enhancement mod for Devil May Cry 1 in the HD Collection, featuring on-the-fly style switching, weapon switching, the custom Mirage Title Launcher, the infinite training arena (**The Void**), and mission select.
 
-A short press of a trigger changes weapons. Holding the trigger keeps the original action: the left trigger still activates Devil Trigger, and the right trigger still shoots. From the title screen, Mission Select lists every mission and difficulty, then starts the one you chose.
+A short press of a trigger changes weapons. Holding the trigger keeps the original action: the left trigger still activates Devil Trigger, and the right trigger still shoots.
 
 The mod loads only with `dmc1.exe`, through the `XINPUT9_1_0.dll` the game already imports. It does not edit `dmc1.exe`, `dinput8.dll`, `Crimson.dll`, or `d3d11.dll`.
+
+## Mirage Title Launcher
+
+Mirage replaces the title menu with a custom high-resolution launcher featuring high-DPI gothic typography, dynamic lighting, and direct access to game modes:
+- **Load Data**: Quickly load your existing save game.
+- **Mission Select**: Select and launch any of the 23 missions across any difficulty (Easy, Normal, Hard, Dante Must Die).
+- **The Void**: Jump directly into the infinite practice arena.
+- **Boss Rush**: Rapid-fire boss gauntlet challenge.
+- **Settings**: In-game configuration and audio/visual options.
 
 ## Install
 
@@ -14,11 +27,15 @@ Launch Devil May Cry 1 from Steam after that.
 
 ## Play
 
-On the title screen, Mission Select sits under Load Data. Pick a mission and a difficulty, then confirm. The mission starts from that mission's opening room.
+From the title screen, the **Mirage Launcher** provides immediate access to your save files, mission select, and training arena.
 
-During a fight, tap the left trigger to cycle melee weapons and the right trigger to cycle guns. Hold either trigger to use Devil Trigger or shoot, as in the original game. The tap window defaults to 180 ms and can be changed in `dmc1-mirage.ini` (or `dmc1-switch.ini`) next to the game:
+During combat:
+- **Left Trigger (LT / L2)**: Tap to cycle melee weapons (Alastor, Ifrit, Force Edge, Sparda). Hold to activate Devil Trigger.
+- **Right Trigger (RT / R2)**: Tap to cycle firearms (Handguns, Shotgun, Grenade Gun, Nightmare-β). Hold to shoot.
 
-```
+The tap window defaults to 180 ms and can be changed in `dmc1-mirage.ini` (or `dmc1-switch.ini`) next to the game:
+
+```ini
 [switch]
 tap_ms=180
 trigger_threshold=30
@@ -42,7 +59,7 @@ Switch styles during gameplay using the D-Pad or keyboard keys **Z, X, C, V**:
 
 ## The Void (Training Arena)
 
-Select **The Void** from the title screen Mission Select menu to enter the infinite practice room.
+Select **The Void** directly from the Mirage Launcher to enter the infinite practice room.
 
 ### Arena Controls & Settings
 - **Insert Key**: Toggle the floating practice configuration menu.
@@ -67,4 +84,3 @@ g++ -shared -O2 -std=c++17 -static -static-libgcc -static-libstdc++ -I src -I sr
 `tools/build_installer.py` then packs that DLL into `ApplyDMC1Mirage.exe`.
 
 This project is not affiliated with Capcom.
-

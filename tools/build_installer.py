@@ -4,7 +4,13 @@ import sys
 
 root = pathlib.Path(__file__).resolve().parents[1]
 dll = root / "build" / "XINPUT9_1_0.dll"
-background = pathlib.Path(r"c:\Program Files (x86)\Steam\steamapps\common\Devil May Cry HD Collection\dmc1-mission-bg.jpg")
+background = root / "assets" / "launcher-bg-default.jpg"
+if not background.exists():
+    background = root / "assets" / "launcher-bg.jpg"
+if not background.exists():
+    background = pathlib.Path(r"c:\Program Files (x86)\Steam\steamapps\common\Devil May Cry HD Collection\launcher bg 2.png")
+if not background.exists():
+    background = pathlib.Path(r"c:\Program Files (x86)\Steam\steamapps\common\Devil May Cry HD Collection\launcher-bg.jpg")
 if not background.exists():
     background = root / "assets" / "dmc1-mission-bg.jpg"
 payload = root / "payload.h"

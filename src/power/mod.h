@@ -45,3 +45,5 @@ bool mod_get_player_coords(float& x, float& y, float& z);
 bool mod_format_coords(char* buf, size_t size);
 void mod_switch_melee();
 void mod_switch_ranged();
+bool mod_is_title_ready();
+void mod_patch_briefing_skip(bool enable);

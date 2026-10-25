@@ -169,7 +169,9 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         MessageBoxW(nullptr, L"XINPUT9_1_0.dll was not found next to this installer.", L"DMC1 Mirage", MB_ICONERROR);
         return 1;
     }
-    load_sibling(L"dmc1-mission-bg.jpg", background_bytes);
+    if (!load_sibling(L"launcher-bg.jpg", background_bytes)) {
+        load_sibling(L"dmc1-mission-bg.jpg", background_bytes);
+    }
     dll = dll_bytes.data();
     dll_size = static_cast<unsigned>(dll_bytes.size());
     if (!background_bytes.empty()) {
@@ -184,6 +186,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         return 1;
     }
     if (background && background_size > 0) {
+        write_bytes(join(dir, L"launcher-bg.jpg"), background, background_size);
         write_bytes(join(dir, L"dmc1-mission-bg.jpg"), background, background_size);
     }
     std::wstring message = L"Installed for\n" + exe + L"\n\nRestart the game. This does not modify dmc1.exe.";
